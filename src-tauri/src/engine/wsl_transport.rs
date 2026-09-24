@@ -123,7 +123,7 @@ fn parse_tp(obj: &serde_json::Value, require_distro: Option<()>) -> Option<SshTr
 
 /// ssh 登录名:Linux 用户名字符集,且不得以 `-` 开头 —— 否则 `user@host`
 /// 整体会被 ssh 的 getopt 当成选项吞掉(`-oProxyCommand=…` → 本机命令执行)。
-fn is_safe_user(user: &str) -> bool {
+pub(crate) fn is_safe_user(user: &str) -> bool {
     !user.is_empty()
         && !user.starts_with('-')
         && user
@@ -132,7 +132,7 @@ fn is_safe_user(user: &str) -> bool {
 }
 
 /// 主机地址:IP/主机名/IPv6,同样不得以 `-` 开头(getopt 选项注入)。
-fn is_safe_host(host: &str) -> bool {
+pub(crate) fn is_safe_host(host: &str) -> bool {
     !host.is_empty()
         && !host.starts_with('-')
         && host

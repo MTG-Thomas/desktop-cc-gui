@@ -354,6 +354,8 @@ export interface AppSettings {
   workspaceAliases: Record<string, string>;
   /** Ids of workspaces hidden into the sidebar's collapsible 已归档 section. */
   archivedWorkspaces: string[];
+  /** Enrolled plain-Linux SSH hosts (spike). */
+  sshHosts: SshHost[];
   language: string;
   claudeBin: string | null;
   kimiBin: string | null;
@@ -751,6 +753,25 @@ export interface DshHostStatus {
    *  the web UI like every RPC); fall back to origin when null. */
   webUrl: string | null;
   /** Probe error, set only when the host is down. */
+  error: string | null;
+}
+
+/** Enrolled plain-Linux SSH host (settings-owned list; probing/attaching
+ *  live in the `ssh_host_*` commands). Spike: Phase 1 UI half. */
+export interface SshHost {
+  id: string;
+  host: string;
+  port: number;
+  user: string;
+  engines: Record<string, string>;
+  lastOk: boolean;
+  lastProbe: string | null;
+}
+
+/** Result of `ssh_host_probe`: reachable + discovered engine binaries. */
+export interface SshProbeResult {
+  reachable: boolean;
+  engines: Record<string, string>;
   error: string | null;
 }
 
@@ -1447,6 +1468,11 @@ export const ipc = {
   dshHostStatus: () => invoke<DshHostStatus>("dsh_host_status"),
   dshHostStart: () => invoke<DshHostStatus>("dsh_host_start"),
   dshHostStop: () => invoke<{ ok: boolean }>("dsh_host_stop"),
+  // enrolled SSH hosts (spike): probe + attach workspace to host
+  sshHostProbe: (host: string, user: string, port: number) =>
+    invoke<SshProbeResult>("ssh_host_probe", { host, user, port }),
+  sshHostAttach: (args: { host: string; user: string; port: number; workspacePath: string; remotePath: string }) =>
+    invoke<{ ok: boolean; engines: Record<string, string> }>("ssh_host_attach", args),
   // managed-CLI lifecycle (CLI 管理 header: version probe + install/update)
   cliVersionStatus: (engine: string) =>
     invoke<CliVersionStatus>("cli_version_status", { engine }),

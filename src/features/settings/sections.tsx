@@ -12,6 +12,7 @@ import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import Smartphone from "lucide-react/dist/esm/icons/smartphone";
 import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
+import Server from "lucide-react/dist/esm/icons/server";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import Plug from "lucide-react/dist/esm/icons/plug";
 // 电脑操控入口：暂时隐藏，恢复时取消注释。
@@ -26,6 +27,7 @@ import { GeneralSection } from "./GeneralSection";
 import { ProxySection } from "./ProxySection";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { ArchivedSessionsSection } from "./ArchivedSessionsSection";
+import { SshHostsSection } from "./SshHostsSection";
 import { AgentsPromptsSection } from "./agents-prompts/AgentsPromptsSection";
 import { CliConfigSection } from "./CliConfigSection";
 import { AboutSection } from "./AboutSection";
@@ -96,6 +98,15 @@ settingsRegistry.register({
   group: "workspace",
   order: 1,
   component: ArchivedSessionsSection,
+});
+settingsRegistry.register({
+  id: "sshHosts",
+  key: "sshHosts",
+  label: () => i18n.t("settings.sshHosts.nav"),
+  icon: Server,
+  group: "workspace",
+  order: 3,
+  component: SshHostsSection,
 });
 settingsRegistry.register({
   id: "agentsPrompts",

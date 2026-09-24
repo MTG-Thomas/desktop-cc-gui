@@ -1,0 +1,269 @@
+//! Enrolled plain-Linux SSH hosts (spike, Phase 1 UI half).
+//!
+//! A host is `{host, user, port}` + probed engine binaries. Probing runs
+//! one ssh call (`BatchMode`, no password prompts ever); attaching a
+//! workspace stamps its `workspaces.meta` row with the `{"ssh": ...}`
+//! shape `wsl_transport::from_workspace_meta` accepts, then re-runs the
+//! history scan so the remote sessions appear in the sidebar.
+//!
+//! Hosts persist in `AppSettings.ssh_hosts` through the normal settings
+//! save path; this module only probes and attaches.
+
+use std::collections::HashMap;
+use std::process::Stdio;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHost {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    #[serde(default)]
+    pub engines: HashMap<String, String>,
+    #[serde(default)]
+    pub last_ok: bool,
+    #[serde(default)]
+    pub last_probe: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshProbe {
+    pub reachable: bool,
+    pub engines: HashMap<String, String>,
+    pub error: Option<String>,
+}
+
+fn validate(host: &str, user: &str, port: u16) -> Result<(), String> {
+    // Same fail-closed whitelists as the transport (destination lands on
+    // an ssh command line after `--`, but user/host are validated anyway).
+    if !(1..=65535).contains(&port) || port == 0 {
+        return Err("port must be 1-65535".into());
+    }
+    if !crate::engine::wsl_transport::is_safe_host(host) {
+        return Err("invalid host".into());
+    }
+    if !crate::engine::wsl_transport::is_safe_user(user) {
+        return Err("invalid user".into());
+    }
+    Ok(())
+}
+
+/// One ssh call: liveness marker + `command -v` per known engine binary.
+/// Stdout contract parsed below: `__CCGUI_OK__`, then `bin:path` lines
+/// (empty path = absent). Stderr is discarded, never piped-and-unread
+/// (same deadlock rationale as the transport's upload path).
+fn probe_script() -> String {
+    let mut bins: Vec<String> = crate::config::ENGINES
+        .iter()
+        .map(|id| crate::engine::cli_binary_name(id).to_string())
+        .collect();
+    bins.sort();
+    bins.dedup();
+    let list = bins.join(" ");
+    format!(
+        "echo __CCGUI_OK__\nfor b in {list}; do printf '%s:' \"$b\"; command -v \"$b\" 2>/dev/null || echo; done\n"
+    )
+}
+
+fn parse_probe_output(out: &str) -> (bool, HashMap<String, String>) {
+    let mut engines = HashMap::new();
+    let mut reachable = false;
+    for line in out.lines() {
+        let line = line.trim();
+        if line == "__CCGUI_OK__" {
+            reachable = true;
+            continue;
+        }
+        if let Some((bin, path)) = line.split_once(':') {
+            let path = path.trim();
+            if !bin.is_empty() && !path.is_empty() {
+                // bin -> engine id is 1:1 except qoder variants (handled by
+                // cli_binary_name at send time); store under the binary name
+                // and let the attach step map back to engine ids.
+                engines.insert(bin.to_string(), path.to_string());
+            }
+        }
+    }
+    (reachable, engines)
+}
+
+async fn run_probe(host: &str, user: &str, port: u16) -> SshProbe {
+    if let Err(e) = validate(host, user, port) {
+        return SshProbe {
+            reachable: false,
+            engines: HashMap::new(),
+            error: Some(e),
+        };
+    }
+    let mut cmd = tokio::process::Command::new("ssh");
+    cmd.arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg("ConnectTimeout=10")
+        .arg("-p")
+        .arg(port.to_string())
+        .arg("--")
+        .arg(format!("{user}@{host}"))
+        .arg(probe_script())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let out = match tokio::time::timeout(std::time::Duration::from_secs(30), cmd.output()).await {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => {
+            return SshProbe {
+                reachable: false,
+                engines: HashMap::new(),
+                error: Some(format!("ssh spawn failed: {e}")),
+            }
+        }
+        Err(_) => {
+            return SshProbe {
+                reachable: false,
+                engines: HashMap::new(),
+                error: Some("ssh probe timed out (30s)".into()),
+            }
+        }
+    };
+    if !out.status.success() {
+        return SshProbe {
+            reachable: false,
+            engines: HashMap::new(),
+            error: Some("ssh connect/auth failed (key auth required, no passwords)".into()),
+        };
+    }
+    let (reachable, engines) = parse_probe_output(&String::from_utf8_lossy(&out.stdout));
+    SshProbe {
+        reachable,
+        engines,
+        error: if reachable {
+            None
+        } else {
+            Some("no probe marker in output".into())
+        },
+    }
+}
+
+#[tauri::command]
+pub async fn ssh_host_probe(host: String, user: String, port: u16) -> Result<SshProbe, String> {
+    Ok(run_probe(host.trim(), user.trim(), port).await)
+}
+
+/// Attach a workspace to an enrolled host: stamp `workspaces.meta` with
+/// the `{"ssh": ...}` shape and re-run the history scan. `engine_paths`
+/// comes from a fresh probe so a stale settings copy cannot strand a
+/// moved binary. Creates the workspace row when missing.
+#[tauri::command]
+pub async fn ssh_host_attach(
+    state: tauri::State<'_, crate::AppState>,
+    host: String,
+    user: String,
+    port: u16,
+    workspace_path: String,
+    remote_path: String,
+) -> Result<serde_json::Value, String> {
+    let host = host.trim().to_string();
+    let user = user.trim().to_string();
+    let workspace_path = workspace_path.trim().to_string();
+    let remote_path = remote_path.trim().to_string();
+    validate(&host, &user, port)?;
+    if workspace_path.is_empty() || remote_path.is_empty() {
+        return Err("workspace path and remote path are required".into());
+    }
+    if !remote_path.starts_with('/') && !remote_path.starts_with("~/") {
+        return Err("remote path must be absolute (or ~/…)".into());
+    }
+    let probe = run_probe(&host, &user, port).await;
+    if !probe.reachable {
+        return Err(probe.error.unwrap_or_else(|| "host unreachable".into()));
+    }
+    // bin name -> engine id (inverse of cli_binary_name; qoder variants
+    // share one binary and resolve the same way at send time).
+    let mut engine_paths = serde_json::Map::new();
+    for id in crate::config::ENGINES {
+        let bin = crate::engine::cli_binary_name(id);
+        if let Some(path) = probe.engines.get(bin) {
+            engine_paths.insert(id.to_string(), serde_json::Value::String(path.clone()));
+        }
+    }
+    let meta = serde_json::json!({"ssh": {
+        "host": host, "user": user, "port": port,
+        "enginePaths": engine_paths, "workspace": remote_path,
+    }})
+    .to_string();
+    {
+        let conn = state.db.0.lock();
+        let updated = conn
+            .execute(
+                "UPDATE workspaces SET meta=?1 WHERE path=?2",
+                rusqlite::params![meta, workspace_path],
+            )
+            .map_err(|e| format!("workspace meta update: {e}"))?;
+        if updated == 0 {
+            let id = uuid::Uuid::new_v4().to_string();
+            let name = std::path::Path::new(&remote_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&remote_path)
+                .to_string();
+            conn.execute(
+                "INSERT INTO workspaces(id, path, name, last_opened_at, sort_order, meta)
+                 VALUES(?1,?2,?3,0,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM workspaces),?4)",
+                rusqlite::params![id, workspace_path, name, meta],
+            )
+            .map_err(|e| format!("workspace insert: {e}"))?;
+        }
+    }
+    crate::history::scanner::spawn_scan(
+        std::sync::Arc::clone(&state.db),
+        std::sync::Arc::clone(&state.sink),
+    );
+    Ok(serde_json::json!({"ok": true, "engines": probe.engines}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_output_parses_marker_and_bins() {
+        let (reachable, engines) = parse_probe_output(
+            "__CCGUI_OK__\nmuse:/root/.local/bin/muse\ncodex:\nopencode:/usr/bin/opencode\n",
+        );
+        assert!(reachable);
+        assert_eq!(engines.get("muse").unwrap(), "/root/.local/bin/muse");
+        assert_eq!(engines.get("opencode").unwrap(), "/usr/bin/opencode");
+        assert!(!engines.contains_key("codex"));
+    }
+
+    #[test]
+    fn probe_output_without_marker_is_unreachable() {
+        let (reachable, _) = parse_probe_output("Permission denied\n");
+        assert!(!reachable);
+    }
+
+    #[test]
+    fn validation_rejects_injection_shaped_input() {
+        assert!(validate("-oProxyCommand=x", "root", 22).is_err());
+        assert!(validate("h", "-evil", 22).is_err());
+        assert!(validate("h", "root", 0).is_err());
+        assert!(validate("172.16.15.168", "root", 22).is_ok());
+    }
+
+    /// Live proof against the disposable LXC target (ignored by default).
+    #[tokio::test]
+    #[ignore]
+    async fn ssh_probe_live() {
+        let target = std::env::var("CCSPIKE_SSH").expect("set CCSPIKE_SSH=user@host");
+        let (user, host) = target.split_once('@').expect("user@host");
+        let probe = run_probe(host, user, 22).await;
+        assert!(probe.reachable, "error: {:?}", probe.error);
+        assert!(probe.engines.contains_key("codex"), "engines: {:?}", probe.engines);
+    }
+}

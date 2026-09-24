@@ -34,6 +34,7 @@ pub mod quit_guard;
 pub mod relay;
 pub mod settings;
 pub mod skills_hub;
+pub mod ssh_hosts;
 pub mod slash_commands;
 pub mod terminal;
 pub mod updater;
@@ -348,6 +349,9 @@ pub fn run() {
             // settings
             settings::get_app_settings,
             settings::update_app_settings,
+            // enrolled SSH hosts (spike)
+            ssh_hosts::ssh_host_probe,
+            ssh_hosts::ssh_host_attach,
             settings::set_window_theme,
             // desktop pet
             pets::pet_list,

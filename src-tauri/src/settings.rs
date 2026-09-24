@@ -168,6 +168,10 @@ pub struct AppSettings {
     /// unknown extra fields round-trip untouched.
     #[serde(flatten)]
     pub bin_overrides: HashMap<String, Value>,
+    /// Enrolled plain-Linux SSH hosts (spike). Frontend-owned list, saved
+    /// through the normal settings path; probing/attaching live in ssh_hosts.
+    #[serde(default)]
+    pub ssh_hosts: Vec<crate::ssh_hosts::SshHost>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -341,6 +345,7 @@ impl Default for AppSettings {
             pet_scale: default_pet_scale(),
             pet_position: None,
             bin_overrides: HashMap::new(),
+            ssh_hosts: Vec::new(),
         }
     }
 }
