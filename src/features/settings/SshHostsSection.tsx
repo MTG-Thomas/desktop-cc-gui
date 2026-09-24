@@ -7,8 +7,8 @@ import {
   SettingsRow,
   SettingsSectionLabel,
 } from "@/components/application/settings/settings-rows";
-import { ipc, type AppSettings, type SshHost } from "@/lib/ipc";
-import { enginesSummary, newSshHost, parsePort } from "./sshHosts";
+import { ipc, type AppSettings, type SshConfigHost, type SshHost } from "@/lib/ipc";
+import { enginesSummary, filterNewCandidates, newSshHost, parsePort } from "./sshHosts";
 
 /**
  * Enrolled plain-Linux SSH hosts (spike). Hosts are stored in settings;
@@ -28,6 +28,8 @@ export function SshHostsSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<SshConfigHost[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +43,28 @@ export function SshHostsSection() {
       .catch((e) => {
         if (!cancelled) setError(String(e));
       });
+    ipc
+      .sshConfigHosts()
+      .then((c) => {
+        if (!cancelled) setCandidates(c);
+      })
+      .catch(() => {
+        // No ssh config (or unreadable) just means no suggestions.
+      });
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const fresh = filterNewCandidates(candidates, hosts);
+
+  const toggleSelected = useCallback((alias: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(alias)) next.delete(alias);
+      else next.add(alias);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -107,6 +128,35 @@ export function SshHostsSection() {
     [hosts, attachHostId, persist],
   );
 
+  const addSelected = useCallback(async () => {
+    const picked = candidates.filter((c) => selected.has(c.alias));
+    if (picked.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const added: SshHost[] = [];
+      for (const c of picked) {
+        const probe = await ipc.sshHostProbe(c.alias, c.user ?? "", c.port ?? 22);
+        if (!probe.reachable) throw new Error(probe.error ?? t("settings.sshHosts.unreachable"));
+        added.push({
+          ...newSshHost(c.alias, c.user ?? "", c.port ?? 22),
+          engines: probe.engines,
+          lastOk: true,
+          lastProbe: new Date().toISOString(),
+        });
+      }
+      await persist([...hosts, ...added]);
+      setSelected(new Set());
+      setNotice(t("settings.sshHosts.addedSelected", { count: added.length }));
+      const first = added[0];
+      if (first && !attachHostId) setAttachHostId(first.id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [candidates, selected, hosts, attachHostId, persist, t]);
+
   const attach = useCallback(async () => {
     const host = hosts.find((h) => h.id === attachHostId);
     if (!host || !wsDraft.trim() || !remoteDraft.trim()) {
@@ -148,6 +198,29 @@ export function SshHostsSection() {
           </Button>
         </SettingsRow>
       ))}
+      {fresh.length > 0 && (
+        <>
+          <SettingsSectionLabel>{t("settings.sshHosts.fromConfig")}</SettingsSectionLabel>
+          {fresh.map((c) => (
+            <SettingsRow key={c.alias} label={c.alias}>
+              <input
+                type="checkbox"
+                aria-label={c.alias}
+                checked={selected.has(c.alias)}
+                disabled={busy}
+                onChange={() => toggleSelected(c.alias)}
+              />
+              <span>
+                {c.user}@{c.hostname}:{c.port}
+              </span>
+            </SettingsRow>
+          ))}
+          <Button disabled={busy || selected.size === 0} onClick={() => void addSelected()}>
+            {t("settings.sshHosts.addSelected", { count: selected.size })}
+          </Button>
+        </>
+      )}
+      <SettingsSectionLabel>{t("settings.sshHosts.manualTitle")}</SettingsSectionLabel>
       <SettingsRow label={t("settings.sshHosts.host")}>
         <Input value={hostDraft} onChange={(v) => setHostDraft(v)} placeholder="172.16.15.168" />
       </SettingsRow>

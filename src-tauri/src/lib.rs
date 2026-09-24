@@ -352,6 +352,7 @@ pub fn run() {
             // enrolled SSH hosts (spike)
             ssh_hosts::ssh_host_probe,
             ssh_hosts::ssh_host_attach,
+            ssh_hosts::ssh_config_hosts,
             settings::set_window_theme,
             // desktop pet
             pets::pet_list,

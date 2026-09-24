@@ -28,3 +28,12 @@ export function newSshHost(host: string, user: string, port: number): SshHost {
     lastProbe: null,
   };
 }
+
+/** Config candidates not already enrolled (matched by alias). */
+export function filterNewCandidates<T extends { alias: string }, H extends { host: string }>(
+  candidates: T[],
+  enrolled: H[],
+): T[] {
+  const known = new Set(enrolled.map((h) => h.host));
+  return candidates.filter((c) => !known.has(c.alias));
+}

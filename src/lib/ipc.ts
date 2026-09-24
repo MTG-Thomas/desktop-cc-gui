@@ -775,6 +775,14 @@ export interface SshProbeResult {
   error: string | null;
 }
 
+/** One concrete `Host` stanza from the local ssh config (`ssh_config_hosts`). */
+export interface SshConfigHost {
+  alias: string;
+  hostname: string;
+  user: string | null;
+  port: number | null;
+}
+
 /** Managed-CLI local version + npm registry latest (`cli_version_status`). */
 export interface CliVersionStatus {
   engine: string;
@@ -1473,6 +1481,7 @@ export const ipc = {
     invoke<SshProbeResult>("ssh_host_probe", { host, user, port }),
   sshHostAttach: (args: { host: string; user: string; port: number; workspacePath: string; remotePath: string }) =>
     invoke<{ ok: boolean; engines: Record<string, string> }>("ssh_host_attach", args),
+  sshConfigHosts: () => invoke<SshConfigHost[]>("ssh_config_hosts"),
   // managed-CLI lifecycle (CLI 管理 header: version probe + install/update)
   cliVersionStatus: (engine: string) =>
     invoke<CliVersionStatus>("cli_version_status", { engine }),

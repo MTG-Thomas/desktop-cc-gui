@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enginesSummary, newSshHost, parsePort } from "./sshHosts";
+import { enginesSummary, filterNewCandidates, newSshHost, parsePort } from "./sshHosts";
 
 describe("parsePort", () => {
   it("accepts 1-65535 integers", () => {
@@ -23,6 +23,16 @@ describe("enginesSummary", () => {
     expect(enginesSummary({ muse: "/x", codex: "/y", pi: "/z" })).toBe(
       "codex, muse (+1 more)",
     );
+  });
+});
+
+describe("filterNewCandidates", () => {
+  it("drops already-enrolled aliases", () => {
+    const out = filterNewCandidates(
+      [{ alias: "a" }, { alias: "b" }],
+      [{ host: "b" }],
+    );
+    expect(out).toEqual([{ alias: "a" }]);
   });
 });
 
