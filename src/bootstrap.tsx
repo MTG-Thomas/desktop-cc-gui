@@ -8,6 +8,7 @@ import { hydrateBetaFeatures } from "./features/settings/beta-features";
 import { initializePerformancePreference } from "./lib/performance-preference";
 import { sessionKey, useChatStore } from "./features/chat/store";
 import { getAppVersion } from "./lib/platform";
+import { installTauriUnlistenGuard } from "./lib/tauri-unlisten-guard";
 import {
   installGlobalCrashHandlers,
   setCrashAppVersion,
@@ -20,6 +21,11 @@ import { AppCrashBoundary } from "./components/crash/AppCrashBoundary";
  * imports React, so it must never be pulled in statically by the entry.
  */
 export function startApp() {
+  // Tauri 2.11's generated unlisten script throws when the registration eval
+  // for the id has not reached the webview yet (tauri#15799). Patch it before
+  // any component/effect can tear a listener down.
+  installTauriUnlistenGuard();
+
   const stopPerformanceMonitor = initializePerformancePreference(() => {
     const state = useChatStore.getState();
     const sessions = Object.values(state.bySession);
