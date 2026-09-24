@@ -36,7 +36,7 @@ import { WebAccessSection } from "./WebAccessSection";
 import { UsageSection } from "./UsageSection";
 import { ShortcutsSection } from "@/features/shortcuts/ShortcutsSection";
 import { ENGINE_IDS, type EngineId } from "./providers";
-import { generalSearchEntries } from "./general-search";
+import { builtinSearchEntries } from "./builtin-search";
 import { registerSettingsSearchEntries } from "./settings-search";
 
 /**
@@ -72,9 +72,9 @@ settingsRegistry.register({
   order: 0,
   component: GeneralSection,
 });
-// 页面内部的搜索行索引（settings-search.ts）跟着页面一起注册：
-// 「哪些页已经可以搜到里面的行」在这一个文件里就能看清。
-registerSettingsSearchEntries(generalSearchEntries);
+// 页面内部的搜索行索引（settings-search.ts）：跟页面一起注册。覆盖了哪些页
+// 在 builtin-search.ts 里一眼能看全（每页一段）。
+registerSettingsSearchEntries(builtinSearchEntries);
 settingsRegistry.register({
   id: "proxy",
   key: "proxy",

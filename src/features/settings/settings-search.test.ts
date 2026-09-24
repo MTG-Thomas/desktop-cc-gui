@@ -9,13 +9,23 @@ import {
 
 const translate = (key: string) => i18n.t(key);
 
-function entry(over: Partial<SettingsSearchEntry> = {}): SettingsSearchEntry {
+/** Entry with overridable coordinates; `labelText` is never used here, so the
+ *  union stays satisfied without a cast. */
+function entry(
+  over: Partial<{
+    page: string;
+    anchor: string;
+    labelKey: string;
+    sectionKey: string;
+    keywords: string[];
+  }> = {},
+): SettingsSearchEntry {
   return {
-    page: "demo",
-    anchor: "petCharacter",
-    labelKey: "settings.petCharacter",
-    sectionKey: "settings.pet",
-    ...over,
+    page: over.page ?? "demo",
+    anchor: over.anchor ?? "petCharacter",
+    labelKey: over.labelKey ?? "settings.petCharacter",
+    sectionKey: over.sectionKey ?? "settings.pet",
+    ...(over.keywords ? { keywords: over.keywords } : {}),
   };
 }
 

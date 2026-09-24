@@ -9,40 +9,49 @@
  *
  * The index is *declared*, never scraped: pre-rendering every page to read its
  * DOM would fire real side effects (GeneralSection reads app settings and the
- * pet list on mount, plugin pages run arbitrary code). One list per page lives
- * next to that page's section file (`general-search.ts` for 通用) and is
- * registered from `sections.tsx` where the page itself registers, so "which
- * pages are searchable" is one grep. Every entry's `anchor` must exist as a
- * `SettingsRow anchor=` on that page — `general-search.test.tsx` renders the
- * page and fails in both directions of drift (a declared row that never
- * renders, a rendered row nobody indexed).
+ * pet list on mount, plugin pages run arbitrary code). Every builtin page's
+ * list lives in one file (`builtin-search.ts`, one block per page, in rail
+ * order) and is registered from `sections.tsx` where the pages register, so
+ * "which pages are searchable" is one glance. Every entry's `anchor` must
+ * exist as a `SettingsRow anchor=` on that page — `builtin-search.test.tsx`
+ * renders each page and fails in both directions of drift (a declared row that
+ * never renders, a rendered row nobody indexed).
  */
 
 /** One searchable row. `page` + `anchor` are the coordinates the shell jumps
- *  to; the two label keys resolve at query time so language flips re-match
+ *  to; the label keys resolve at query time so language flips re-match
  *  without re-registering. */
-export interface SettingsSearchEntry {
+interface SettingsSearchCoordinates {
   /** Target page: the settings registry key, i.e. the `?page=` value. */
   page: string;
   /** `anchor` prop of the target row (`settings-rows.tsx`). */
   anchor: string;
-  /** i18n key of the row label — the same key the row renders. */
-  labelKey: string;
   /** i18n key of the card heading the row sits under; shown as the result's
-   *  breadcrumb line (`通用 › 桌面宠物 › 显示桌面宠物`). */
-  sectionKey: string;
+   *  breadcrumb line (`通用 › 桌面宠物 › 显示桌面宠物`). Omitted on a page
+   *  whose card has no heading (内测功能) or when it would just repeat the
+   *  page title or the row label — the page name heading above is enough. */
+  sectionKey?: string;
   /** Extra query aliases that are not rendered anywhere (「pet」 for the pet
    *  rows, so an English habit still finds them). */
   keywords?: readonly string[];
 }
 
-/** One row a query matched, with both labels already resolved. */
+/** Row label: an i18n key (the common case), or literal text for a row that
+ *  is genuinely not translated — brand names like 「CC GUI」. */
+type SettingsSearchLabel =
+  | { labelKey: string; labelText?: never }
+  | { labelKey?: never; labelText: string };
+
+export type SettingsSearchEntry = SettingsSearchCoordinates & SettingsSearchLabel;
+
+/** One row a query matched, with its labels already resolved. */
 export interface SettingsSearchHit {
   entry: SettingsSearchEntry;
   /** Row label as the result shows it (placeholders stripped). */
   label: string;
-  /** Card heading above the row (result breadcrumb). */
-  section: string;
+  /** Card heading above the row (result breadcrumb), or null on a page
+   *  without one. */
+  section: string | null;
 }
 
 const entries: SettingsSearchEntry[] = [];
@@ -91,9 +100,13 @@ export function matchSettingsSearch(
   if (!needle) return [];
   const hits: SettingsSearchHit[] = [];
   for (const entry of entries) {
-    const label = resultLabel(translate(entry.labelKey));
-    const section = resultLabel(translate(entry.sectionKey));
-    const haystack = [label, section, ...(entry.keywords ?? [])];
+    const label = resultLabel(
+      entry.labelText ?? translate(entry.labelKey as string),
+    );
+    const section = entry.sectionKey
+      ? resultLabel(translate(entry.sectionKey))
+      : null;
+    const haystack = [label, section ?? "", ...(entry.keywords ?? [])];
     if (haystack.some((text) => text.toLowerCase().includes(needle))) {
       hits.push({ entry, label, section });
     }
