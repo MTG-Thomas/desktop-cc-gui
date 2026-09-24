@@ -332,7 +332,7 @@ export function SessionSearchPalette({
             }}
             placeholder={t("chat.searchSessions")}
             aria-label={t("chat.searchSessions")}
-            className="h-11 w-full bg-transparent text-body-medium text-text-primary outline-none placeholder:text-text-placeholder"
+            className="palette-search-field h-11 w-full bg-transparent text-body-medium text-text-primary outline-none placeholder:text-text-placeholder"
           />
           {filtersLive && (
             <div className="flex shrink-0 items-center gap-1">

@@ -4,8 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "@/lib/ipc";
 
-// Pages read their settings (and the pet list) on mount; the proxy keeps every
-// other method inert for the module tree they pull in.
+// Pages read their settings (and the pet page its package list) on mount; the
+// proxy keeps every other method inert for the module tree they pull in.
 const { getAppSettings, listPets, webDevices, dshHostStatus, listGrantedRoots } =
   vi.hoisted(() => ({
     getAppSettings: vi.fn(),
@@ -52,6 +52,7 @@ import { builtinSearchEntries } from "./builtin-search";
 import { CliConfigBody } from "./CliConfigBody";
 import { GeneralSection } from "./GeneralSection";
 import { PerformanceDiagnosticsSection } from "./PerformanceDiagnostics";
+import { PetSection } from "./PetSection";
 import { ProxySection } from "./ProxySection";
 import { ENGINE_IDS, type EngineId } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
@@ -134,6 +135,7 @@ function makeCli(engine: EngineId): CliConfigState {
 
 const PAGES: PageSpec[] = [
   { page: "general", render: () => <GeneralSection /> },
+  { page: "pet", render: () => <PetSection /> },
   { page: "proxy", render: () => <ProxySection /> },
   { page: "shortcuts", render: () => <ShortcutsSection /> },
   { page: "update", render: () => <UpdateSection /> },

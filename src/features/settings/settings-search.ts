@@ -3,13 +3,14 @@
  * settings page, plus the pure matcher the shell runs per keystroke.
  *
  * The rail's own search only matches nav labels (page titles: 通用 / 网络代理
- * …), so a row such as 桌面宠物 inside 通用 was unfindable — typing 宠物
- * answered 没有匹配的设置 while the row sat right there. This module is the
- * declarative half of the fix (the shell renders the hits).
+ * …), so a row such as 主题 inside 通用 was unfindable — typing 主题 answered
+ * 没有匹配的设置 while the row sat right there. This module is the declarative
+ * half of the fix (the shell renders the hits).
  *
  * The index is *declared*, never scraped: pre-rendering every page to read its
- * DOM would fire real side effects (GeneralSection reads app settings and the
- * pet list on mount, plugin pages run arbitrary code). Every builtin page's
+ * DOM would fire real side effects (GeneralSection reads app settings on
+ * mount, PetSection also lists pet packages, plugin pages run arbitrary
+ * code). Every builtin page's
  * list lives in one file (`builtin-search.ts`, one block per page, in rail
  * order) and is registered from `sections.tsx` where the pages register, so
  * "which pages are searchable" is one glance. Every entry's `anchor` must
@@ -91,10 +92,10 @@ function resultLabel(text: string): string {
 
 /**
  * Case-insensitive substring match over the row label, the card heading and
- * the aliases. Matching the card heading is deliberate: 「外观」/「桌面宠物」
- * are the names users remember, and every hit of that section then reads as a
- * path (`通用 › 桌面宠物 › 角色`) explaining why it matched. Hits keep
- * declaration order, so a page's results are in that page's own row order.
+ * the aliases. Matching the card heading is deliberate: 「外观」/「行为」 are
+ * the names users remember, and every hit of that section then reads as a
+ * path (`通用 › 外观 › 主题`) explaining why it matched. Hits keep declaration
+ * order, so a page's results are in that page's own row order.
  */
 export function matchSettingsSearch(
   entries: readonly SettingsSearchEntry[],

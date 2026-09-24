@@ -56,32 +56,27 @@ const generalEntries: SettingsSearchEntry[] = [
   },
   {
     page: "general",
+    anchor: "uiZoom",
+    labelKey: "settings.uiZoom",
+    sectionKey: "settings.appearance",
+  },
+  {
+    page: "general",
+    anchor: "fontFamily",
+    labelKey: "settings.fontFamily",
+    sectionKey: "settings.appearance",
+  },
+  {
+    page: "general",
+    anchor: "codeFontFamily",
+    labelKey: "settings.codeFontFamily",
+    sectionKey: "settings.appearance",
+  },
+  {
+    page: "general",
     anchor: "sidebarThreadLimit",
     labelKey: "settings.sidebarThreadLimit",
     sectionKey: "settings.appearance",
-  },
-  // 桌面宠物：标签是「显示桌面宠物 / 角色 / 宠物大小」，中文查询靠卡片标题
-  // （桌面宠物）命中，英文习惯由 keywords 兜底。
-  {
-    page: "general",
-    anchor: "petEnabled",
-    labelKey: "settings.petEnabled",
-    sectionKey: "settings.pet",
-    keywords: ["pet", "spritesheet"],
-  },
-  {
-    page: "general",
-    anchor: "petCharacter",
-    labelKey: "settings.petCharacter",
-    sectionKey: "settings.pet",
-    keywords: ["pet"],
-  },
-  {
-    page: "general",
-    anchor: "petScale",
-    labelKey: "settings.petScale",
-    sectionKey: "settings.pet",
-    keywords: ["pet"],
   },
   // 行为
   {
@@ -108,6 +103,30 @@ const generalEntries: SettingsSearchEntry[] = [
     anchor: "promptHistoryManage",
     labelKey: "settings.promptHistoryManageTitle",
     sectionKey: "settings.promptHistoryManage",
+  },
+];
+
+/** 桌面宠物 (`PetSection.tsx`): row labels are 显示桌面宠物 / 角色 / 宠物大小;
+ *  the page title is itself 桌面宠物, so the page-title lane finds the name a
+ *  user remembers, and the `pet` aliases cover English searches. */
+const petEntries: SettingsSearchEntry[] = [
+  {
+    page: "pet",
+    anchor: "petEnabled",
+    labelKey: "settings.petEnabled",
+    keywords: ["pet", "spritesheet"],
+  },
+  {
+    page: "pet",
+    anchor: "petCharacter",
+    labelKey: "settings.petCharacter",
+    keywords: ["pet"],
+  },
+  {
+    page: "pet",
+    anchor: "petScale",
+    labelKey: "settings.petScale",
+    keywords: ["pet"],
   },
 ];
 
@@ -269,6 +288,9 @@ const workspaceEntries: SettingsSearchEntry[] = [
 
 export const builtinSearchEntries: SettingsSearchEntry[] = [
   ...generalEntries,
+
+  // 桌面宠物（其他）
+  ...petEntries,
 
   // 网络代理
   {
