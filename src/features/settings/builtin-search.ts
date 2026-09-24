@@ -1,4 +1,4 @@
-import { IS_WINDOWS } from "@/lib/platform";
+import { IS_WINDOWS, isWeb } from "@/lib/platform";
 import { shortcutActions } from "@/features/shortcuts/actions";
 import { BETA_FEATURES } from "./beta-features";
 import { ENGINE_IDS, type EngineId } from "./providers";
@@ -18,10 +18,12 @@ import type { SettingsSearchEntry } from "./settings-search";
  * spelled out (shortcuts, 内测功能) — the page renders `anchor={action.id}`
  * from the same list, so the two cannot drift.
  *
- * Pages with nothing to index: 关于 (community QR + social chips, no settings
- * rows), and the list pages (工作区 / 归档管理 / 智能体与提示词 / 用量 /
- * 能力扩展) whose rows are user data — searching *their* content is a data
- * search, not a settings search.
+ * Pages whose content is entirely the user's data (归档管理's session list,
+ * 用量's charts, 关于's community block) index nothing: their page name is
+ * the entry, and searching *their* content is a data search, not a settings
+ * search. Pages whose lists hang off a fixed control index that control
+ * instead: 工作区 的 分组/项目/已授权目录 sections, the Skills and
+ * 智能体与提示词 pane tabs.
  */
 
 /** 通用 (`GeneralSection.tsx` + `PromptHistorySettings.tsx`): every row of the
@@ -211,6 +213,60 @@ function cliPageEntries(engine: EngineId): SettingsSearchEntry[] {
   return rows.map((row) => ({ page: `cli:${engine}`, ...row }));
 }
 
+/** 智能体与提示词 (`AgentsPromptsSection.tsx`): the two panes; the tab itself is
+ *  the searchable target (the pane content is the user's agents/prompts), so
+ *  a hit for 提示词 also selects that tab. */
+const agentsPromptsEntries: SettingsSearchEntry[] = [
+  {
+    page: "agentsPrompts",
+    anchor: "agents",
+    labelKey: "settings.agentPromptTabAgents",
+    activatorAnchor: "agents",
+  },
+  {
+    page: "agentsPrompts",
+    anchor: "prompts",
+    labelKey: "settings.agentPromptTabPrompts",
+    activatorAnchor: "prompts",
+  },
+];
+
+/** 能力扩展 → Skills (`SkillsSection.tsx`): its three panes (我的 Skills / 发现
+ *  / 使用情况), same shape as 智能体与提示词 — the tab is the setting, the
+ *  content is data. */
+const skillsEntries: SettingsSearchEntry[] = (
+  ["installed", "discover", "usage"] as const
+).map((tab) => ({
+  page: "skills",
+  anchor: tab,
+  labelKey: `skills.tabs.${tab}`,
+  activatorAnchor: tab,
+}));
+
+/** 工作区与数据 → 工作区 (`WorkspacesSection.tsx`): its three sections (分组 /
+ *  项目 / 已授权目录); their rows are the user's own workspaces. 项目 and
+ *  已授权目录 only render once there is something to show — a hit then still
+ *  opens the page, it just has nothing to flash. 已授权目录 is native-only:
+ *  the web bridge never routes `grant_root` (`GrantedRootsCard` skips the
+ *  section), so indexing it there would point at a row that cannot exist. */
+const workspaceEntries: SettingsSearchEntry[] = [
+  {
+    page: "workspaces",
+    anchor: "workspaceGroups",
+    labelKey: "settings.workspaceGroups",
+  },
+  { page: "workspaces", anchor: "projects", labelKey: "settings.projects" },
+  ...(isWeb
+    ? []
+    : [
+        {
+          page: "workspaces",
+          anchor: "grantedRoots",
+          labelKey: "settings.grantedRoots",
+        } satisfies SettingsSearchEntry,
+      ]),
+];
+
 export const builtinSearchEntries: SettingsSearchEntry[] = [
   ...generalEntries,
 
@@ -245,6 +301,12 @@ export const builtinSearchEntries: SettingsSearchEntry[] = [
   ...webAccessEntries,
 
   ...ENGINE_IDS.flatMap(cliPageEntries),
+
+  ...agentsPromptsEntries,
+
+  ...skillsEntries,
+
+  ...workspaceEntries,
 
   // 性能诊断：这个开关是页面上唯一的设置行（打开诊断弹窗那一块是动作入口）。
   {

@@ -686,19 +686,23 @@ function SettingsContent({
         `[data-setting-anchor="${target}"]`,
       );
     const reveal = () => {
-      const target = find(anchor);
-      if (!target) {
-        // The row lives behind a pane tab or a collapsed card: open it once,
-        // then keep waiting — the row mounts on the next commit.
-        const opener = request.activatorAnchor
-          ? find(request.activatorAnchor)
-          : null;
-        if (opener && !activated && opener.getAttribute("aria-pressed") !== "true" && opener.getAttribute("aria-expanded") !== "true") {
-          activated = true;
-          opener.click();
-        }
-        return false;
+      // Open the declared activator once — a pane tab or a collapsed card the
+      // row lives behind. It may be the target itself (a settings-page tab the
+      // hit names): selecting it is what makes that landing meaningful. A tab
+      // that already reports itself selected is never clicked again (that
+      // would close it).
+      const opener = request.activatorAnchor
+        ? find(request.activatorAnchor)
+        : null;
+      const alreadyOpen = (el: HTMLElement) =>
+        el.getAttribute("aria-pressed") === "true" ||
+        el.getAttribute("aria-expanded") === "true";
+      if (opener && !activated && !alreadyOpen(opener)) {
+        activated = true;
+        opener.click();
       }
+      const target = find(anchor);
+      if (!target) return false;
       target.scrollIntoView?.({
         block: "center",
         behavior: prefersReducedMotion() ? "auto" : "smooth",

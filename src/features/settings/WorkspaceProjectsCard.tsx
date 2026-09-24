@@ -26,7 +26,7 @@ export function WorkspaceProjectsCard({
   if (groups.length === 0 || workspaces.length === 0) return null;
   return (
     <div className="flex w-full flex-col gap-2">
-      <SettingsSectionLabel>
+      <SettingsSectionLabel anchor="projects">
         {t("settings.projects")}
         <span className="ml-2 text-body-2-regular font-normal text-text-tertiary">
           {t("settings.projectsDesc")}

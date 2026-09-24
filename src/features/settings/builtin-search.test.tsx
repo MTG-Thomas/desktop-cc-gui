@@ -6,27 +6,30 @@ import type { AppSettings } from "@/lib/ipc";
 
 // Pages read their settings (and the pet list) on mount; the proxy keeps every
 // other method inert for the module tree they pull in.
-const { getAppSettings, listPets, webDevices, dshHostStatus } = vi.hoisted(() => ({
-  getAppSettings: vi.fn(),
-  listPets: vi.fn(async () => []),
-  // Web 访问 lists devices on mount; the page indexes its row above them.
-  webDevices: vi.fn(async () => []),
-  // 本地主机 probes the host on mount (dsh page only).
-  dshHostStatus: vi.fn(async () => ({
-    installed: false,
-    version: null,
-    host: "127.0.0.1",
-    port: 8787,
-    origin: "http://127.0.0.1:8787",
-    autoStart: true,
-    running: false,
-    ownership: null,
-    describe: null,
-  })),
-}));
+const { getAppSettings, listPets, webDevices, dshHostStatus, listGrantedRoots } =
+  vi.hoisted(() => ({
+    getAppSettings: vi.fn(),
+    listPets: vi.fn(async () => []),
+    // Web 访问 lists devices on mount; the page indexes its row above them.
+    webDevices: vi.fn(async () => []),
+    // 工作区 keeps a section (已授权目录) that only renders with data.
+    listGrantedRoots: vi.fn(async () => ["/tmp/granted-root"]),
+    // 本地主机 probes the host on mount (dsh page only).
+    dshHostStatus: vi.fn(async () => ({
+      installed: false,
+      version: null,
+      host: "127.0.0.1",
+      port: 8787,
+      origin: "http://127.0.0.1:8787",
+      autoStart: true,
+      running: false,
+      ownership: null,
+      describe: null,
+    })),
+  }));
 vi.mock("@/lib/ipc", () => ({
   ipc: new Proxy(
-    { getAppSettings, listPets, webDevices, dshHostStatus },
+    { getAppSettings, listPets, webDevices, listGrantedRoots, dshHostStatus },
     {
       get: (target, prop) =>
         prop in target ? Reflect.get(target, prop) : async () => null,
@@ -34,7 +37,16 @@ vi.mock("@/lib/ipc", () => ({
   ),
 }));
 
+// The app is a desktop client; jsdom looks like the web bridge (no Tauri
+// internals), which hides native-only surfaces (Skills' tabs, 已授权目录).
+// Render as native so the guard covers what desktop users actually see.
+vi.mock("@/lib/transport", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/transport")>()),
+  isWeb: false,
+}));
+
 import i18n from "@/lib/i18n";
+import { AgentsPromptsSection } from "./agents-prompts/AgentsPromptsSection";
 import { BetaFeaturesSection } from "./BetaFeaturesSection";
 import { builtinSearchEntries } from "./builtin-search";
 import { CliConfigBody } from "./CliConfigBody";
@@ -45,10 +57,22 @@ import { ENGINE_IDS, type EngineId } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
 import { UpdateSection } from "./UpdateSection";
 import { WebAccessSection } from "./WebAccessSection";
+import { WorkspacesSection } from "./WorkspacesSection";
+import { useChatStore } from "@/features/chat/store";
 import { ShortcutsSection } from "@/features/shortcuts/ShortcutsSection";
+import { SkillsSection } from "@/features/skills/SkillsSection";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
+
+// jsdom has no ResizeObserver; PillTabList (the Skills / 智能体与提示词 tab
+// strips) measures its selection thumb with one.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
 /** Only the fields the row-based pages read; the rest of AppSettings is not
  *  touched by them. */
@@ -115,6 +139,9 @@ const PAGES: PageSpec[] = [
   { page: "update", render: () => <UpdateSection /> },
   { page: "betaFeatures", render: () => <BetaFeaturesSection /> },
   { page: "diagnostics", render: () => <PerformanceDiagnosticsSection /> },
+  { page: "agentsPrompts", render: () => <AgentsPromptsSection /> },
+  { page: "skills", render: () => <SkillsSection /> },
+  { page: "workspaces", render: () => <WorkspacesSection /> },
   {
     page: "webAccess",
     render: () => <WebAccessSection />,
@@ -143,6 +170,20 @@ beforeEach(() => {
   getAppSettings.mockResolvedValue(SETTINGS);
   // Skip Web 访问's first-run risk dialog so the pane tab is clickable.
   localStorage.setItem(WAN_RISK_ACK_KEY, "1");
+  // 工作区's 项目 section only renders with a workspace and a group.
+  useChatStore.setState({
+    workspaces: [
+      {
+        id: "w1",
+        path: "/tmp/w1",
+        name: "w1",
+        lastOpenedAt: null,
+        sortOrder: null,
+        groupId: "g1",
+      },
+    ],
+    workspaceGroups: [{ id: "g1", name: "组一", sortOrder: 0 }],
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -152,6 +193,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.removeItem(WAN_RISK_ACK_KEY);
+  useChatStore.setState({ workspaces: [], workspaceGroups: [] });
 });
 
 function anchorsOf(element: HTMLElement): string[] {
