@@ -660,7 +660,7 @@ function SettingsContent({
   renderPage: (key: string) => ReactNode;
   /** Search hit to reveal: object identity is the request token, so choosing
    *  the same hit twice scrolls (and flashes) again. */
-  anchorRequest: { anchor: string } | null;
+  anchorRequest: { anchor: string; activatorAnchor?: string } | null;
   contentScrolled: boolean;
   onContentScrolled: (scrolled: boolean) => void;
   onClose: () => void;
@@ -671,19 +671,34 @@ function SettingsContent({
   const [flashAnchor, setFlashAnchor] = useState<string | null>(null);
 
   useEffect(() => {
-    const anchor = anchorRequest?.anchor;
-    if (!anchor) return;
+    const request = anchorRequest;
+    if (!request) return;
     const container = bodyRef.current;
     if (!container) return;
+    const { anchor } = request;
     setFlashAnchor(null);
+    let activated = false;
     let flashTimer: number | undefined;
     let waitTimer: number | undefined;
     let observer: MutationObserver | undefined;
-    const reveal = () => {
-      const target = container.querySelector<HTMLElement>(
-        `[data-setting-anchor="${anchor}"]`,
+    const find = (target: string) =>
+      container.querySelector<HTMLElement>(
+        `[data-setting-anchor="${target}"]`,
       );
-      if (!target) return false;
+    const reveal = () => {
+      const target = find(anchor);
+      if (!target) {
+        // The row lives behind a pane tab or a collapsed card: open it once,
+        // then keep waiting — the row mounts on the next commit.
+        const opener = request.activatorAnchor
+          ? find(request.activatorAnchor)
+          : null;
+        if (opener && !activated && opener.getAttribute("aria-pressed") !== "true" && opener.getAttribute("aria-expanded") !== "true") {
+          activated = true;
+          opener.click();
+        }
+        return false;
+      }
       target.scrollIntoView?.({
         block: "center",
         behavior: prefersReducedMotion() ? "auto" : "smooth",
@@ -886,7 +901,10 @@ export function SettingsShell({
 
   /** Row the last search hit revealed; the request token keeps `selectHit`
    *  idempotent per click instead of per anchor value. */
-  const [anchorRequest, setAnchorRequest] = useState<{ anchor: string } | null>(null);
+  const [anchorRequest, setAnchorRequest] = useState<{
+    anchor: string;
+    activatorAnchor?: string;
+  } | null>(null);
 
   // A page reached inside a folded group (deep link, page change) unfolds
   // that group so the selected row is never hidden; the fold stays
@@ -911,7 +929,10 @@ export function SettingsShell({
   const selectHit = useCallback((hit: SettingsSearchHit) => {
     setPage(hit.entry.page);
     setContentScrolled(false);
-    setAnchorRequest({ anchor: hit.entry.anchor });
+    setAnchorRequest({
+      anchor: hit.entry.anchor,
+      activatorAnchor: hit.entry.activatorAnchor,
+    });
   }, []);
 
   return (

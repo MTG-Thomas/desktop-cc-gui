@@ -20,6 +20,8 @@ import { cx } from "@/utils/cx";
  *          and matches the hit's `anchor` (see `settings-search.ts`). A row
  *          renders its own highlight because the shell cannot know when an
  *          async page (通用 reads its settings first) finally paints it.
+ *          `SettingsSectionLabel` takes the same anchor for the sections that
+ *          are themselves the setting (供应商渠道).
  *   label  Body 1/Medium text/primary above a card (14px, near-black, like
  *          the reference); row labels Body 1/Regular text/primary with an
  *          optional Body 2/Regular text/secondary description underneath.
@@ -53,6 +55,14 @@ export function SettingsAnchorFlashProvider({
   );
 }
 
+/** Whether the element carrying `anchor` is the row a search just revealed.
+ *  Shared by `SettingsRow`, `SettingsSectionLabel` and the pages with their
+ *  own row chrome (the CLI engine cards). */
+export function useSettingsAnchorFlash(anchor?: string): boolean {
+  const flashingAnchor = useContext(SettingsAnchorFlashContext);
+  return anchor !== undefined && anchor === flashingAnchor;
+}
+
 /** Grouped card — rows divide themselves with borders that respect pl-12. */
 export function SettingsCard({ className, children }: { className?: string; children: ReactNode }) {
   return (
@@ -69,10 +79,30 @@ export function SettingsCard({ className, children }: { className?: string; chil
 
 /** 14px near-black section heading above a card ("Pull Requests",
  *  "Notifications") — the reference's label hierarchy: cards and rows carry
- *  the dark text, section headings around them do not shrink to mute grey. */
-export function SettingsSectionLabel({ className, children }: { className?: string; children: ReactNode }) {
+ *  the dark text, section headings around them do not shrink to mute grey.
+ *  A heading can carry a search `anchor` of its own: some sections *are* the
+ *  setting (供应商渠道, 订阅授权) and their rows are user data. */
+export function SettingsSectionLabel({
+  className,
+  anchor,
+  children,
+}: {
+  className?: string;
+  /** Search anchor (plain identifier, unique per page). */
+  anchor?: string;
+  children: ReactNode;
+}) {
+  const flashing = useSettingsAnchorFlash(anchor);
   return (
-    <p className={cx("w-full px-3 text-body-medium text-text-primary", className)}>{children}</p>
+    <p
+      data-setting-anchor={anchor}
+      className={cx(
+        "w-full px-3 text-body-medium text-text-primary",
+        flashing && "rounded-2lg ring-2 ring-inset ring-border-focus-ring",
+        className,
+      )}
+    >      {children}
+    </p>
   );
 }
 
@@ -93,8 +123,7 @@ export function SettingsRow({
   anchor?: string;
   children?: ReactNode;
 }) {
-  const flashingAnchor = useContext(SettingsAnchorFlashContext);
-  const flashing = anchor !== undefined && anchor === flashingAnchor;
+  const flashing = useSettingsAnchorFlash(anchor);
   return (
     <div
       data-setting-anchor={anchor}

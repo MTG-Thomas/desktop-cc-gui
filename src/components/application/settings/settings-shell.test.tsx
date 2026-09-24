@@ -218,3 +218,69 @@ describe("SettingsShell search", () => {
     );
   });
 });
+
+describe("SettingsShell search behind a pane tab", () => {
+  const PANE_GROUPS: SettingsNavGroup[] = [
+    {
+      id: "system",
+      label: "系统",
+      items: [{ key: "pane", label: "分页页", icon: Settings }],
+    },
+  ];
+  const PANE_ENTRIES: SettingsSearchEntry[] = [
+    {
+      page: "pane",
+      anchor: "paneRow",
+      labelKey: "settings.petScale",
+      sectionKey: "settings.pet",
+      activatorAnchor: "paneTab",
+    },
+  ];
+
+  /** Page whose row only exists while 公网-style pane tab is selected. */
+  function PanePage() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button
+          type="button"
+          data-setting-anchor="paneTab"
+          aria-pressed={open}
+          onClick={() => setOpen(true)}
+        >
+          远程
+        </button>
+        {open && (
+          <SettingsRow anchor="paneRow" label={i18n.t("settings.petScale")} />
+        )}
+      </>
+    );
+  }
+
+  it("opens the pane, then scrolls to and flashes the row inside it", async () => {
+    await act(async () => {
+      root.render(
+        <SettingsShell
+          onClose={() => {}}
+          defaultPage="pane"
+          ariaLabel="设置"
+          groups={PANE_GROUPS}
+          titles={{ pane: "分页页" }}
+          renderPage={() => <PanePage />}
+          searchEntries={PANE_ENTRIES}
+        />,
+      );
+    });
+    await typeQuery("宠物大小");
+    await click(
+      railButton(i18n.t("settings.petScale"), i18n.t("settings.pet"))!,
+    );
+    const row = anchoredRow("paneRow");
+    expect(row).not.toBeNull();
+    expect(row!.className).toContain("ring-border-focus-ring");
+    expect(
+      container.querySelector("[data-setting-anchor=\"paneTab\"]")!
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+});

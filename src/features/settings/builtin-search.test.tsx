@@ -1,17 +1,32 @@
-import { act, type ComponentType } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "@/lib/ipc";
 
 // Pages read their settings (and the pet list) on mount; the proxy keeps every
 // other method inert for the module tree they pull in.
-const { getAppSettings, listPets } = vi.hoisted(() => ({
+const { getAppSettings, listPets, webDevices, dshHostStatus } = vi.hoisted(() => ({
   getAppSettings: vi.fn(),
   listPets: vi.fn(async () => []),
+  // Web 访问 lists devices on mount; the page indexes its row above them.
+  webDevices: vi.fn(async () => []),
+  // 本地主机 probes the host on mount (dsh page only).
+  dshHostStatus: vi.fn(async () => ({
+    installed: false,
+    version: null,
+    host: "127.0.0.1",
+    port: 8787,
+    origin: "http://127.0.0.1:8787",
+    autoStart: true,
+    running: false,
+    ownership: null,
+    describe: null,
+  })),
 }));
 vi.mock("@/lib/ipc", () => ({
   ipc: new Proxy(
-    { getAppSettings, listPets },
+    { getAppSettings, listPets, webDevices, dshHostStatus },
     {
       get: (target, prop) =>
         prop in target ? Reflect.get(target, prop) : async () => null,
@@ -22,10 +37,14 @@ vi.mock("@/lib/ipc", () => ({
 import i18n from "@/lib/i18n";
 import { BetaFeaturesSection } from "./BetaFeaturesSection";
 import { builtinSearchEntries } from "./builtin-search";
+import { CliConfigBody } from "./CliConfigBody";
 import { GeneralSection } from "./GeneralSection";
 import { PerformanceDiagnosticsSection } from "./PerformanceDiagnostics";
 import { ProxySection } from "./ProxySection";
+import { ENGINE_IDS, type EngineId } from "./providers";
+import type { CliConfigState } from "./useCliConfig";
 import { UpdateSection } from "./UpdateSection";
+import { WebAccessSection } from "./WebAccessSection";
 import { ShortcutsSection } from "@/features/shortcuts/ShortcutsSection";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -43,18 +62,78 @@ const SETTINGS = {
   petEnabled: false,
   petScale: 1,
   petId: "",
+  customModels: {},
 } as unknown as AppSettings;
 
-/** One entry per page that owns indexed rows: the component is rendered and
- *  its anchors are compared with that page's declared entries, so a row can
- *  neither be declared without rendering nor render without being indexed. */
-const PAGES: { page: string; component: ComponentType }[] = [
-  { page: "general", component: GeneralSection },
-  { page: "proxy", component: ProxySection },
-  { page: "shortcuts", component: ShortcutsSection },
-  { page: "update", component: UpdateSection },
-  { page: "betaFeatures", component: BetaFeaturesSection },
-  { page: "diagnostics", component: PerformanceDiagnosticsSection },
+/** localStorage flag Web 访问 reads to skip its 公网访问 risk dialog. */
+const WAN_RISK_ACK_KEY = "ccgui-next.webWanRiskAccepted";
+
+/** A page under guard: `render` mounts it, `activate` performs whatever step
+ *  a human would need before its pane/card-hidden rows exist. */
+interface PageSpec {
+  page: string;
+  render: () => ReactNode;
+  activate?: (container: HTMLElement) => Promise<void>;
+}
+
+// CliConfigBody's state comes from useCliConfig in the app; the rows under
+// test only read these fields (same shape as CliConfigBody.test.tsx).
+function makeCli(engine: EngineId): CliConfigState {
+  return {
+    t: i18n.t,
+    config: null,
+    engine,
+    error: null,
+    notice: null,
+    busy: false,
+    dialog: null,
+    setDialog: () => {},
+    pendingDelete: null,
+    setPendingDelete: () => {},
+    ccStatus: null,
+    currentId: "",
+    enabled: true,
+    entries: [],
+    officialActive: true,
+    officialEditing: false,
+    setOfficialEditing: () => {},
+    saveOfficialConfig: () => Promise.resolve(null),
+    mutate: <T,>(fn: () => Promise<T>) => fn().then((value) => value).catch(() => undefined),
+    activate: () => {},
+    saveProvider: () => {},
+    confirmDelete: () => {},
+    syncCcSwitch: () => Promise.resolve(),
+    importCcSwitchFile: () => Promise.resolve(),
+    dismissCcSwitch: () => {},
+  } as CliConfigState;
+}
+
+const PAGES: PageSpec[] = [
+  { page: "general", render: () => <GeneralSection /> },
+  { page: "proxy", render: () => <ProxySection /> },
+  { page: "shortcuts", render: () => <ShortcutsSection /> },
+  { page: "update", render: () => <UpdateSection /> },
+  { page: "betaFeatures", render: () => <BetaFeaturesSection /> },
+  { page: "diagnostics", render: () => <PerformanceDiagnosticsSection /> },
+  {
+    page: "webAccess",
+    render: () => <WebAccessSection />,
+    // 访问密码 / 已授权设备 / 中继 / 部署中继 live in the 公网访问 pane.
+    activate: (container) => clickAnchor(container, "webWanTab"),
+  },
+  ...ENGINE_IDS.map((engine) => ({
+    page: `cli:${engine}`,
+    render: () => (
+      <MemoryRouter>
+        <CliConfigBody cli={makeCli(engine)} />
+      </MemoryRouter>
+    ),
+    // dsh keeps 自定义路径/her/port/自动启动 behind the collapsed 连接设置 card.
+    activate:
+      engine === "dsh"
+        ? (container: HTMLElement) => clickAnchor(container, "dshConnection")
+        : undefined,
+  })),
 ];
 
 let container: HTMLDivElement;
@@ -62,6 +141,8 @@ let root: Root;
 
 beforeEach(() => {
   getAppSettings.mockResolvedValue(SETTINGS);
+  // Skip Web 访问's first-run risk dialog so the pane tab is clickable.
+  localStorage.setItem(WAN_RISK_ACK_KEY, "1");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -70,18 +151,39 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  localStorage.removeItem(WAN_RISK_ACK_KEY);
 });
+
+function anchorsOf(element: HTMLElement): string[] {
+  return [...element.querySelectorAll("[data-setting-anchor]")].map(
+    (el) => el.getAttribute("data-setting-anchor") ?? "",
+  );
+}
+
+async function clickAnchor(element: HTMLElement, anchor: string) {
+  const target = element.querySelector<HTMLElement>(
+    `[data-setting-anchor="${anchor}"]`,
+  );
+  if (!target) throw new Error(`activator not rendered: ${anchor}`);
+  // Same rule as the shell: a tab already selected (or a card already open)
+  // needs no click — clicking would close it again.
+  const alreadyOpen =
+    target.getAttribute("aria-pressed") === "true" ||
+    target.getAttribute("aria-expanded") === "true";
+  if (alreadyOpen) return;
+  await act(async () => {
+    target.click();
+  });
+}
 
 /** Anchors the page actually painted; the awaited act lets the settings read
  *  land for pages that render their rows only afterwards. */
-async function renderedAnchors(component: ComponentType): Promise<string[]> {
-  const Page = component;
+async function renderedAnchors(spec: PageSpec): Promise<string[]> {
   await act(async () => {
-    root.render(<Page />);
+    root.render(spec.render());
   });
-  return [...container.querySelectorAll("[data-setting-anchor]")].map(
-    (el) => el.getAttribute("data-setting-anchor") ?? "",
-  );
+  if (spec.activate) await spec.activate(container);
+  return anchorsOf(container);
 }
 
 describe("builtinSearchEntries", () => {
@@ -92,14 +194,14 @@ describe("builtinSearchEntries", () => {
     }
   });
 
-  for (const { page, component } of PAGES) {
-    it(`${page}: declares exactly the rows it renders`, async () => {
-      const rendered = await renderedAnchors(component);
+  for (const spec of PAGES) {
+    it(`${spec.page}: declares exactly the rows it renders`, async () => {
+      const rendered = await renderedAnchors(spec);
       // A duplicated anchor would flash two rows at once and collide on one
       // React key.
       expect(new Set(rendered).size).toBe(rendered.length);
       const declared = builtinSearchEntries
-        .filter((entry) => entry.page === page)
+        .filter((entry) => entry.page === spec.page)
         .map((entry) => entry.anchor);
       expect([...rendered].sort()).toEqual([...declared].sort());
     });
@@ -113,6 +215,23 @@ describe("builtinSearchEntries", () => {
         if (!key) continue;
         expect(i18n.exists(key, { lng: "zh" })).toBe(true);
         expect(i18n.exists(key, { lng: "en" })).toBe(true);
+      }
+    }
+  });
+
+  it("only names activators that the same page renders", async () => {
+    for (const spec of PAGES) {
+      for (const entry of builtinSearchEntries.filter(
+        (candidate) => candidate.page === spec.page,
+      )) {
+        if (!entry.activatorAnchor) continue;
+        // The activator is a pane tab or a collapsed card up front — it must
+        // exist before anything is opened.
+        expect(
+          builtinSearchEntries.some(
+            (candidate) => candidate.anchor === entry.activatorAnchor,
+          ),
+        ).toBe(true);
       }
     }
   });

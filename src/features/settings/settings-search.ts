@@ -21,11 +21,16 @@
 /** One searchable row. `page` + `anchor` are the coordinates the shell jumps
  *  to; the label keys resolve at query time so language flips re-match
  *  without re-registering. */
-interface SettingsSearchCoordinates {
+export interface SettingsSearchCoordinates {
   /** Target page: the settings registry key, i.e. the `?page=` value. */
   page: string;
   /** `anchor` prop of the target row (`settings-rows.tsx`). */
   anchor: string;
+  /** Control the row only exists behind — a pane tab or a collapsed card —
+   *  addressed by its own anchor. The shell opens it (one click) before
+   *  waiting for the row, so a hit can never land on a pane that is not
+   *  shown. */
+  activatorAnchor?: string;
   /** i18n key of the card heading the row sits under; shown as the result's
    *  breadcrumb line (`通用 › 桌面宠物 › 显示桌面宠物`). Omitted on a page
    *  whose card has no heading (内测功能) or when it would just repeat the

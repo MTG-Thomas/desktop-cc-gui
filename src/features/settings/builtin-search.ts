@@ -1,6 +1,7 @@
 import { IS_WINDOWS } from "@/lib/platform";
 import { shortcutActions } from "@/features/shortcuts/actions";
 import { BETA_FEATURES } from "./beta-features";
+import { ENGINE_IDS, type EngineId } from "./providers";
 import type { SettingsSearchEntry } from "./settings-search";
 
 /**
@@ -129,6 +130,87 @@ const betaFeatureEntries: SettingsSearchEntry[] = BETA_FEATURES.map(
   }),
 );
 
+/** Web 访问 (`WebAccessSection.tsx`): the two panes plus the cards that live in
+ *  公网访问, which only render while that pane is open — they carry the pane
+ *  tab as their activator, so a hit opens the pane first. */
+const webAccessEntries: SettingsSearchEntry[] = [
+  { page: "webAccess", anchor: "webLanTab", labelKey: "settings.webLan" },
+  { page: "webAccess", anchor: "webWanTab", labelKey: "settings.webWan" },
+  {
+    page: "webAccess",
+    anchor: "webAuth",
+    labelKey: "settings.webAuth",
+    activatorAnchor: "webWanTab",
+  },
+  {
+    page: "webAccess",
+    anchor: "webDevices",
+    labelKey: "settings.webDevices",
+    activatorAnchor: "webWanTab",
+  },
+  {
+    page: "webAccess",
+    anchor: "webRelay",
+    labelKey: "settings.webRelay",
+    activatorAnchor: "webWanTab",
+  },
+  {
+    page: "webAccess",
+    anchor: "webRelayDeploy",
+    labelKey: "settings.webRelayDeploy",
+    activatorAnchor: "webWanTab",
+  },
+];
+
+/**
+ * CLI 管理 pages: the same handful of rows on all 11 engine pages (引擎名 is
+ * the group heading, so a hit reads 「Claude › 官方配置」 and the user picks
+ * their engine — the rail already lists enabled engines first). The row set
+ * follows each page's own composition:
+ *   - dsh has no 官方配置 row (no native config file) and keeps its bin picker
+ *     inside 本地主机, behind the collapsed 连接设置 card;
+ *   - codex has one path row (配置目录) instead of a bin override;
+ *   - pi/omp add 订阅授权 / API Key / 自定义供应商, whose rows are user data
+ *     and whose headings are the searchable setting.
+ */
+function cliPageEntries(engine: EngineId): SettingsSearchEntry[] {
+  const rows: {
+    anchor: string;
+    labelKey: string;
+    activatorAnchor?: string;
+  }[] = [];
+  if (engine !== "dsh") {
+    rows.push({ anchor: "cliOfficial", labelKey: "settings.cliOfficial" });
+  }
+  if (engine === "codex") {
+    rows.push({ anchor: "cliHomePath", labelKey: "settings.cliCustomHome" });
+  } else if (engine !== "dsh") {
+    rows.push({ anchor: "cliBinPath", labelKey: "settings.cliCustomPath" });
+  }
+  rows.push({ anchor: "cliCustomModels", labelKey: "settings.cliCustomModels" });
+  if (engine === "dsh") {
+    rows.push({ anchor: "dshHost", labelKey: "settings.dshLocalHost" });
+    rows.push({
+      anchor: "dshConnection",
+      labelKey: "settings.dshConnectionSettings",
+    });
+    for (const anchor of ["dshCustomPath", "dshHostAddress", "dshAutoStart"] as const) {
+      rows.push({
+        anchor,
+        labelKey: `settings.${anchor}`,
+        activatorAnchor: "dshConnection",
+      });
+    }
+  }
+  if (engine === "pi" || engine === "omp") {
+    rows.push({ anchor: "piAuthOauth", labelKey: "settings.piAuthOauthTitle" });
+    rows.push({ anchor: "piAuthApiKey", labelKey: "settings.piAuthApiKeyTitle" });
+    rows.push({ anchor: "piAuthCustom", labelKey: "settings.piAuthCustomTitle" });
+  }
+  rows.push({ anchor: "cliChannels", labelKey: "settings.cliChannels" });
+  return rows.map((row) => ({ page: `cli:${engine}`, ...row }));
+}
+
 export const builtinSearchEntries: SettingsSearchEntry[] = [
   ...generalEntries,
 
@@ -159,6 +241,10 @@ export const builtinSearchEntries: SettingsSearchEntry[] = [
   },
 
   ...betaFeatureEntries,
+
+  ...webAccessEntries,
+
+  ...ENGINE_IDS.flatMap(cliPageEntries),
 
   // 性能诊断：这个开关是页面上唯一的设置行（打开诊断弹窗那一块是动作入口）。
   {
