@@ -112,6 +112,7 @@
 - **分支选择器列远程分支并标「远程分支」**：变更面板与状态栏的分支列表（同一份 `git_branches` 数据）在本地分支之后列出 remote-tracking 分支（`origin/x`），行尾挂中性徽标「远程分支」（`git.remoteBranch`）——刚 fetch 到、本地尚无同名分支的远程分支必须可搜可切，与 VSCode / CLI 一致。选择远程分支不直接进入 detached HEAD：后端物化为同名本地跟踪分支（已存在则切到它，绝不以远程 tip 覆盖本地提交）；`origin/HEAD` 这类符号引用不进列表。列表仍按「本地在前、远程在后」分组，搜索仍是子串匹配。回归：`git.rs` 的 `branches_list_*` / `checkout_remote_branch_*` 用例、`ChangesPanelHeader.test.tsx`。
 - **Worktree = 侧栏子工作区**：workspaces 表以 `kind="worktree"` + `parentId` 表达子工作区（`worktreeMetaOf()` 从 `meta.worktree` 读分支/PR 元数据），侧栏把它挂到父仓库行的「WORKTREES · n」分组内（`repo-tree.tsx` 的 `WorktreeGroup`）：子行主名是分支名（目录名进 tooltip），可展开各自的会话线程（展开态复用侧栏持久化展开集），分组整体也可折叠（折叠集存在 worktree store 的 localStorage）。分组与子行两层的展开/收起都走 [§2.4](#24-展开--收起动效) 的 `SidebarDisclosure` 高度动画。行内徽标：「PR#n」（仅从 PR 创建时，`status-purple-*`）。父行不可见（已归档/已移除）时子行降级为普通顶层行，不丢入口；子行悬停出现 ＋（`chat.newSession`），直接在该 worktree 目录下开新会话（复用工作区行的 `onNewSessionInWorkspace` 链路）。分组只在有子项或有进行中创建时渲染，首个创建入口在工作区右键菜单「新建 Worktree…」；创建对话框三来源 Chip 顺序为「新分支（默认）/ 已有分支 / 从 PR 创建」。「新分支」的默认 base 是父工作区当前检出分支（取自 git store 的实时 status，不用会过期的列表标记，`defaultBaseRef()` 是唯一规则来源）——分支从手头这份工作接着往下开，与裸 `git worktree add -b` 取 HEAD 一致；当前分支是 main/master 时改用远程同名分支（本地 main 可能落后，远程 base 后端会先 fetch），detached HEAD 或该分支已不存在时落回「origin/main → origin/master → main → master → 任意远程 → 首个分支」的兜底顺序，用户手选后不再被晚到的 status 改写。回归：`WorktreeCreateDialog.test.tsx` 的默认 base 用例与 `pr-input.test.ts` 的 `defaultBaseRef` 用例、`use-chat-sidebar.test.tsx` 的挂载/降级用例、`ai-chat-sidebar.test.tsx` 的子行 ＋ 与分组折叠用例、`tests/browser/sidebar-collapse.html`。
 - **Worktree 目录丢失与锁定要明说**：后端 `git_worktree_list` 解析 porcelain 的 `prunable` / `locked` 属性。`prunable`（目录已从磁盘消失）的子行渲染「目录已丢失」徽标（`status-rose-*`，原因进 `title`）；`locked` 的 worktree 在右键菜单里「删除 Worktree…」禁用并给出原因（对齐「禁用目标不能谎报」），删除对话框打开时同样复检。回归：`git_worktree.rs` 的 porcelain 用例。
+- **⌘L 面板的检索统计行**：内容 lane 存活时（查询 ≥ 2 字且「内容」筛选开启），输入框下方常驻一行 `role="status"`：防抖与请求期间「正在检索…」，完成后「耗时 {{time}} · 共检索 {{total}} 条消息」，失败给「检索失败」（错误色）；三种状态共用一行，不从上一句查询留数字下来。`elapsedUs` 只计后端查询本身（FTS/LIKE 扫描 + 片段构建，`history/search.rs` 的 `search()`），`pending_count` 与语料 `COUNT(*)` 这两个看板查询在计时外；`total` 是当前 `session_messages` 条数（正在建索引时另按 `pending` 提示，不把二者相加）。时长文案由 `formatSearchDuration` 统一：< 10ms 保一位小数（`0.4 ms`），秒内取整毫秒，跨秒两位小数秒。回归：`session-search-palette.test.tsx`、`search.rs` 的 `total_messages` 断言。
 
 ## 4. 动作反馈
 
@@ -242,6 +243,7 @@ const feedback = useRunningFeedback(store.loading);
 
 | 版本 | 时间 | 内容 |
 |---|---|---|
+| v0.53 | 2026-09-24 | ⌘L 会话搜索面板新增检索统计行：内容 lane 存活时显示「正在检索… / 耗时 {{time}} · 共检索 {{total}} 条消息 / 检索失败」；后端 `search()` 返回 `elapsedUs` + `totalMessages`，耗时只计查询本身（看板计数在计时外）；§3 补充规则 |
 | v0.52 | 2026-09-24 | 设置「电脑操控」移除拖拽授权引导：删掉“重启生效 / 把图标拖进授权列表”提示与可拖拽 App 图标，macOS 授权只保留「打开系统设置」深链（`computer_use_open_permission_settings`）；同步删除 `computer_use_drag_source` 命令、`tauri-plugin-drag` 依赖与 `drag:default` 权限；§3 更新权限行规则 |
 | v0.51 | 2026-09-24 | AskUserQuestion 多题卡片：单选自动前进、多选逐题确认与单选/多选样式区分 |
 | v0.50 | 2026-09-23 | 桌面宠物（§4.3）：透明置顶宠物窗口的点击穿透/拖动/右键缩放交互、状态气泡动效时长、位置与尺寸记忆、多会话轮播；移除宠物改用 `ConfirmDialog`（danger），后端宠物错误码本地化 |

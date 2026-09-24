@@ -486,6 +486,12 @@ export interface MessageSearchPage {
   /** Sessions still awaiting (re)indexing at query time; >0 means the
    *  hit list can grow without the query changing. */
   pending: number;
+  /** Time the query itself took, microseconds — snippet build included,
+   *  bookkeeping counts excluded (see history/search.rs). The palette
+   *  shows it as the search-speed line. */
+  elapsedUs: number;
+  /** Messages in the content index the query ran against. */
+  totalMessages: number;
 }
 /** One entry of the workspace file index (`list_file_index`). */
 export interface FileIndexEntry {
