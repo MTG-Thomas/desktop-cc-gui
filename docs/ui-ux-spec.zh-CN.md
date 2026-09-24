@@ -72,6 +72,7 @@
 - **权限行读真实系统状态**：`computer_use_permission_status` 决定已授权/未授权，`osPermissionsRequired` 为假（Windows/Linux）时显示“无需额外授权”而非未授权行，不追一条系统从不要的授权；macOS 的授权入口是「打开系统设置」按钮深链到对应面板（`computer_use_open_permission_settings`），页面不提供拖拽 App 图标的引导，也不暗示点一下就能自动授予。
 - **虚拟光标由 App 强制显示，不是设置项**：运行期间 `cu_overlay.rs` 跟随每个动作目标显示指针，模型侧没有可关闭它的工具；提示词只能说明它存在（computer_use.rs 的 MCP `instructions`），不能决定其可见性。
 - **急停只在电脑操控回合期间武装**：`computerUseSetActive` 在发送时武装、回合终止（`engine-events.ts` 的 `done`/`error`）时解除，全局 Esc 不超出它的运行期。
+- **排队行可上下调序**：排队卡片每行在发送 / 移除之外给「上移 / 下移」箭头（`message-queue.tsx` 的 `onMove` → store 的 `moveQueued(id, "up" | "down")`），仅在队列多于一行时渲染；首尾行各有一个方向禁用（`disabled:cursor-default` + 降透明，不隐藏，控件不换位）。箭头按用户看到的列表方向移动——卡片是「最新在上、队首在下」，所以上移 = 更晚发送、下移 = 更早发送（`moveQueued` 里 `up` 即数组后移一位；越界与未知 id 为 no-op），行首编号随重排实时重算。回归：`message-queue.test.tsx`、`queue-drain.test.ts`。
 - 可交互元素至少实现：默认 / hover / `focus-visible`（`ring-border-focus-ring`）/ active / disabled。按钮类控件的焦点环只走 `focus-visible`（不打扰鼠标用户）；输入类控件可以用 `focus:border-border-focus-ring` 表示聚焦，因为文本输入聚焦本身就是用户意图。三个搜索面板（⌘K 命令 / ⌘L 会话 / ⌘P 文件）的输入框例外：无边框，聚焦只靠光标与键盘高亮行，`.palette-search-field`（`globals.css`）负责压掉平台默认焦点框——Windows WebView2 会在 `outline-none` 之外再画一圈，macOS WKWebView 不画。
 - disabled 必须改变光标语义（`disabled:cursor-not-allowed` 或 `disabled:cursor-default`）并降低强调（`opacity-50`~`60` 或语义 disabled token），不能只是点不动。
 - **异步动作进行中不可重入**：进行中禁用按钮（或首行拦截 `if (running) return`），避免重复请求。
@@ -246,6 +247,7 @@ const feedback = useRunningFeedback(store.loading);
 
 | 版本 | 时间 | 内容 |
 |---|---|---|
+| v0.58 | 2026-09-24 | 排队消息可调序：每行新增「上移 / 下移」箭头（`moveQueued(id, "up" \| "down")`，方向按用户看到的列表——上移更晚发送、下移更早发送，越界 no-op），仅队列多于一行时渲染，首尾行禁用对应方向；行首编号随行重算；§3 补充规则 |
 | v0.57 | 2026-09-24 | 设置 → 通用 → 外观新增「界面缩放 / 界面字体 / 代码字体」：缩放抽出 `src/lib/zoom.ts` 与状态栏 ±、快捷键共用一份存储并事件同步；字体覆盖根 `--font-inter` / `--font-mono-source` 变量（默认 / 系统 / 自定义本机字体），代码字体同步作用于聊天代码块与内置终端（终端热更 + refit），bootstrap 首帧前预应用；§3 补充规则 |
 | v0.56 | 2026-09-24 | 收起的 worktree 子行聚合显示运行中状态点：折叠态下子行内显示与会话行同一套 `sidebar-thread-status` 呼吸点（全部退避重试降为静态点），展开后让位给各线程行；§3 worktree 条目同步 |
 | v0.55 | 2026-09-24 | 设置搜索铺满所有内置设置页：Web 访问（含藏在「公网访问」面板里的四行）、11 个 CLI 引擎页（按各页真实行集生成）、智能体与提示词 / Skills 页签、工作区分组/项目/已授权目录；新增 `activatorAnchor`（命中前先点开页签或折叠卡，已开就不点）与 `labelText`（品牌名不翻译）、可省略的 `sectionKey`，`SettingsSectionLabel` / `PillTab` / CLI `RowShell` 都能当搜索目标；§3 更新规则 |

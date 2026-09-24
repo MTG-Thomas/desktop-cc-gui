@@ -139,6 +139,8 @@ export const zh = {
     stop: "停止",
     queueRemove: "移出队列",
     queueSendNow: "发送",
+    queueMoveUp: "上移",
+    queueMoveDown: "下移",
     queueImages: "{{count}} 张图片",
     queueTitle: "排队消息",
     queueClear: "清空",

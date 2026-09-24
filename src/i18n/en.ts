@@ -143,6 +143,8 @@ export const en: Messages = {
     stop: "Stop",
     queueRemove: "Remove from queue",
     queueSendNow: "Send",
+    queueMoveUp: "Move up",
+    queueMoveDown: "Move down",
     queueImages: "{{count}} images",
     queueTitle: "Queued messages",
     queueClear: "Clear all",
