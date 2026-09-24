@@ -16,7 +16,9 @@ import { useChatStore } from "@/features/chat/store";
 import { ENGINE_IDS, type EngineId } from "./providers";
 import { CliHeaderActions } from "./CliHeaderActions";
 import { readStoredJson, writeStored } from "@/lib/storage";
-// Side-effect import: registers all builtin sections into settingsRegistry.
+import { settingsSearchEntries } from "./settings-search";
+// Side-effect import: registers all builtin sections into settingsRegistry
+// (and their page-internal search rows, see ./sections).
 import "./sections";
 
 /** Rail meta for known nav groups (label + rail order). A group the SDK adds
@@ -278,6 +280,7 @@ export default function SettingsPage() {
       titles={titles}
       renderPage={renderPage}
       renderHeaderActions={renderHeaderActions}
+      searchEntries={settingsSearchEntries()}
     />
   );
 }

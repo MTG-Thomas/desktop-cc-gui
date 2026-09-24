@@ -293,7 +293,7 @@ function AppearanceCard({
     <div className="flex w-full flex-col gap-2">
       <SettingsSectionLabel>{t("settings.appearance")}</SettingsSectionLabel>
       <SettingsCard>
-        <SettingsRow label={t("settings.theme")}>
+        <SettingsRow anchor="theme" label={t("settings.theme")}>
           <Select
             aria-label={t("settings.theme")}
             selectedKey={settings.theme}
@@ -307,6 +307,7 @@ function AppearanceCard({
         </SettingsRow>
         {IS_WINDOWS && (
           <SettingsRow
+            anchor="titlebar"
             label={t("settings.titlebar")}
             description={t("settings.titlebarRestartHint")}
           >
@@ -333,7 +334,7 @@ function AppearanceCard({
             </div>
           </SettingsRow>
         )}
-        <SettingsRow label={t("settings.language")}>
+        <SettingsRow anchor="language" label={t("settings.language")}>
           <Select
             aria-label={t("settings.language")}
             selectedKey={settings.language}
@@ -344,7 +345,7 @@ function AppearanceCard({
             <SelectItem id="en">{t("settings.langEn")}</SelectItem>
           </Select>
         </SettingsRow>
-        <SettingsRow label={t("settings.sidebarThreadLimit")}>
+        <SettingsRow anchor="sidebarThreadLimit" label={t("settings.sidebarThreadLimit")}>
           <Input
             aria-label={t("settings.sidebarThreadLimit")}
             size="small"
@@ -395,6 +396,7 @@ function PetCard({
       <SettingsSectionLabel>{t("settings.pet")}</SettingsSectionLabel>
       <SettingsCard>
         <SettingsRow
+          anchor="petEnabled"
           label={t("settings.petEnabled")}
           description={t("settings.petEnabledDesc")}
         >
@@ -411,7 +413,7 @@ function PetCard({
             {t("settings.petImportRequired")}
           </p>
         )}
-        <SettingsRow label={t("settings.petCharacter")}>
+        <SettingsRow anchor="petCharacter" label={t("settings.petCharacter")}>
           <div className="flex items-center gap-2">
             <Select
               aria-label={t("settings.petCharacter")}
@@ -441,6 +443,7 @@ function PetCard({
           </div>
         </SettingsRow>
         <SettingsRow
+          anchor="petScale"
           label={t("settings.petScale")}
         >
           <Select
@@ -477,7 +480,7 @@ function BehaviorCard({
     <div className="flex w-full flex-col gap-2">
       <SettingsSectionLabel>{t("settings.behavior")}</SettingsSectionLabel>
       <SettingsCard>
-        <SettingsRow label={t("settings.sendShortcut")}>
+        <SettingsRow anchor="sendShortcut" label={t("settings.sendShortcut")}>
           <Select
             aria-label={t("settings.sendShortcut")}
             selectedKey={settings.composerSendShortcut ?? "enter"}
@@ -496,6 +499,7 @@ function BehaviorCard({
         </SettingsRow>
 
         <SettingsRow
+          anchor="thinkingAutoCollapse"
           label={t("settings.thinkingAutoCollapse")}
           description={t("settings.thinkingAutoCollapseDesc")}
         >
