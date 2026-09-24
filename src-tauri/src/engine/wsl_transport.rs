@@ -34,37 +34,56 @@ const REMOTE_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// `meta.wsl` 的形状(插件 ccgui-plugin-wsl 写入;其他插件可同构复用)。
 #[derive(Debug, Clone)]
-pub struct WslTransport {
-    /// Windows 宿主地址(IP/主机名)。
+pub struct SshTransport {
+    /// 远端宿主地址(IP/主机名)。WSL 场景下是承载发行版的 Windows 主机。
     pub host: String,
     pub port: u16,
     pub user: String,
-    /// 发行版名(wsl.exe -d)。
-    pub distro: String,
+    /// 发行版名(wsl.exe -d)。None = 普通 Linux 主机,命令直跑 bash。
+    pub distro: Option<String>,
     /// SSH ControlMaster 套接字路径;None = 纯 BatchMode(key 认证)。
     pub control_path: Option<String>,
     /// 引擎 bin 在发行版内的绝对路径(bin 名 → 路径,插件探针写入)。
     pub engine_paths: HashMap<String, String>,
-    /// 工作区在发行版内的路径(`cd` 目标;缺省 = 发行版默认 cwd)。
+    /// 工作区在远端主机内的路径(`cd` 目标;缺省 = 远端默认 cwd)。
     pub workspace: Option<String>,
 }
 
+/// Spike 兼容别名:调用方逐步迁移到 SshTransport。
+pub type WslTransport = SshTransport;
+
 /// 从工作区 `meta` JSON 提取传输描述;形状不符 = None(按本地工作区跑)。
+/// 接受两种形状:
+/// - `{"wsl": {host, user, distro, ...}}` —— 经 Windows 主机的发行版(既有行为);
+/// - `{"ssh": {host, user, port?, enginePaths?, workspace?}}` —— 普通 Linux
+///   主机(spike),命令直跑远端 bash。
 pub fn from_workspace_meta(meta: &serde_json::Value) -> Option<WslTransport> {
-    let wsl = meta.get("wsl")?;
-    let host = wsl.get("host")?.as_str()?.trim().to_string();
+    if let Some(ssh) = meta.get("ssh") {
+        return parse_tp(ssh, None);
+    }
+    parse_tp(meta.get("wsl")?, Some(()))
+}
+
+fn parse_tp(obj: &serde_json::Value, require_distro: Option<()>) -> Option<SshTransport> {
+    let host = obj.get("host")?.as_str()?.trim().to_string();
     if !is_safe_host(&host) {
         return None;
     }
-    let user = wsl.get("user")?.as_str()?.trim().to_string();
+    let user = obj.get("user")?.as_str()?.trim().to_string();
     if !is_safe_user(&user) {
         return None;
     }
-    let distro = wsl.get("distro")?.as_str()?.trim().to_string();
-    if !is_safe_distro(&distro) {
-        return None;
-    }
-    let engine_paths = wsl
+    let distro = match require_distro {
+        Some(()) => {
+            let d = obj.get("distro")?.as_str()?.trim().to_string();
+            if !is_safe_distro(&d) {
+                return None;
+            }
+            Some(d)
+        }
+        None => None,
+    };
+    let engine_paths = obj
         .get("enginePaths")
         .and_then(|v| v.as_object())
         .map(|o| {
@@ -78,19 +97,19 @@ pub fn from_workspace_meta(meta: &serde_json::Value) -> Option<WslTransport> {
         .unwrap_or_default();
     Some(WslTransport {
         host,
-        port: match wsl.get("port") {
+        port: match obj.get("port") {
             Some(v) => v.as_u64()?.try_into().ok()?,
             None => 22,
         },
         user,
         distro,
-        control_path: wsl
+        control_path: obj
             .get("controlPath")
             .and_then(|v| v.as_str())
             .map(str::to_string)
             .filter(|s| !s.trim().is_empty()),
         engine_paths,
-        workspace: wsl
+        workspace: obj
             .get("workspace")
             .and_then(|v| v.as_str())
             .map(str::to_string)
@@ -215,20 +234,28 @@ fn base_ssh_command(transport: &WslTransport) -> Command {
     command
 }
 
-fn wsl_command_string(transport: &WslTransport, remote_argv: &[&str]) -> String {
-    let distro = transport.distro.replace('"', "");
+/// 远端命令串:distro 有值走 `wsl.exe -d <distro> -- …`(Windows 宿主),
+/// None 则直跑远端 shell(Linux 宿主,spike)。argv 全是固定词/白名单路径,
+/// 双引号包裹后整体作为 ssh 的单个远端参数。
+fn remote_command_string(transport: &WslTransport, remote_argv: &[&str]) -> String {
     let joined = remote_argv
         .iter()
         .map(|a| {
-            // Windows-side quoting for the string the remote DefaultShell will
-            // hand to wsl.exe: double quotes, no $ / backtick / | inside (the
-            // caller guarantees the safe charset: tee/bash 与 UUID 路径是固定词,
-            // distro 在 from_workspace_meta 已过白名单,replace 只是纵深防御).
+            // WSL 路径下这是远端 DefaultShell 交给 wsl.exe 的串:双引号,
+            // 内部不出现 $ / 反引号 / |(调用方保证安全字符集:tee/bash 与
+            // UUID 路径是固定词,distro 在 from_workspace_meta 已过白名单,
+            // replace 只是纵深防御)。
             format!("\"{a}\"")
         })
         .collect::<Vec<_>>()
         .join(" ");
-    format!("wsl.exe -d \"{distro}\" -- {joined}")
+    match &transport.distro {
+        Some(distro) => {
+            let distro = distro.replace('"', "");
+            format!("wsl.exe -d \"{distro}\" -- {joined}")
+        }
+        None => joined,
+    }
 }
 
 /// 把本机 argv[0] 解析成发行版内的可执行路径:
@@ -304,7 +331,7 @@ async fn upload_script(
     remote_path: &str,
 ) -> Result<(), String> {
     let mut command = base_ssh_command(transport);
-    command.arg(wsl_command_string(transport, &["tee", remote_path]));
+    command.arg(remote_command_string(transport, &["tee", remote_path]));
     // stderr 直接丢弃:从不读取却 piped 会在远端写满管缓冲时与 wait 互等
     // 死锁;错误细节本就不进报错文案(下面是固定提示)。
     command
@@ -332,13 +359,13 @@ async fn upload_script(
         Err(_) => {
             let _ = child.start_kill();
             return Err(format!(
-                "wsl 脚本上传超时({}s,检查远程主机 wsl.exe 是否无响应)",
+                "ssh 脚本上传超时({}s,检查远程主机是否无响应)",
                 REMOTE_CALL_TIMEOUT.as_secs()
             ));
         }
     };
     if !status.success() {
-        return Err("wsl 脚本上传失败(检查远程主机连接/认证;ControlMaster 可能已过期,请在 WSL 主机设置重新连接)".to_string());
+        return Err("ssh 脚本上传失败(检查远程主机连接/认证;ControlMaster 可能已过期,请重连该主机)".to_string());
     }
     Ok(())
 }
@@ -364,7 +391,7 @@ pub async fn wrap(command: Command, transport: &WslTransport) -> Result<Wrapped,
 
     let mut wrapped = base_ssh_command(transport);
     // 脚本已明文落盘,run 串只含固定词。
-    wrapped.arg(wsl_command_string(transport, &["bash", &remote_path]));
+    wrapped.arg(remote_command_string(transport, &["bash", &remote_path]));
     Ok(Wrapped {
         command: wrapped,
         cleanup_files: vec![local_tmp],
@@ -410,7 +437,7 @@ pub async fn run_script_output(
     let body = format!("rm -f \"$0\"\n{script_body}");
     upload_script(transport, &body, &remote_path).await?;
     let mut command = base_ssh_command(transport);
-    command.arg(wsl_command_string(transport, &["bash", &remote_path]));
+    command.arg(remote_command_string(transport, &["bash", &remote_path]));
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -423,7 +450,7 @@ pub async fn run_script_output(
         Ok(result) => result.map_err(|e| format!("远程命令执行失败: {e}"))?,
         Err(_) => {
             return Err(format!(
-                "远程命令超时({}s,检查远程主机 wsl.exe 是否无响应)",
+                "远程命令超时({}s,检查远程主机是否无响应)",
                 REMOTE_CALL_TIMEOUT.as_secs()
             ));
         }
@@ -469,7 +496,7 @@ mod tests {
             host: "10.0.0.2".into(),
             port: 22,
             user: "dev".into(),
-            distro: "Ubuntu-22.04".into(),
+            distro: Some("Ubuntu-22.04".into()),
             control_path: None,
             engine_paths: HashMap::from([(
                 "omp".to_string(),
@@ -545,7 +572,7 @@ mod tests {
 
     #[test]
     fn remote_command_string_is_shell_inert() {
-        let s = wsl_command_string(&tp(), &["bash", "/tmp/x.sh"]);
+        let s = remote_command_string(&tp(), &["bash", "/tmp/x.sh"]);
         assert_eq!(s, "wsl.exe -d \"Ubuntu-22.04\" -- \"bash\" \"/tmp/x.sh\"");
         assert!(!s.contains('$') && !s.contains('|') && !s.contains('`'));
     }
@@ -623,5 +650,84 @@ mod tests {
         assert!(args[..dashdash]
             .iter()
             .all(|a| a.starts_with('-') || !a.contains('@')));
+    }
+
+    // ---- spike: plain-Linux SSH hosts (no distro) ----
+
+    fn linux_tp() -> WslTransport {
+        WslTransport {
+            host: "172.16.15.168".into(),
+            port: 22,
+            user: "root".into(),
+            distro: None,
+            control_path: None,
+            engine_paths: HashMap::from([(
+                "codex".to_string(),
+                "/usr/local/bin/codex".to_string(),
+            )]),
+            workspace: Some("/tmp/spike-ws".into()),
+        }
+    }
+
+    #[test]
+    fn ssh_meta_parses_without_distro() {
+        let meta = json!({"ssh": {
+            "host": "172.16.15.168", "user": "root",
+            "workspace": "/tmp/spike-ws",
+            "enginePaths": {"codex": "/usr/local/bin/codex"}
+        }});
+        let t = from_workspace_meta(&meta).unwrap();
+        assert_eq!(t.host, "172.16.15.168");
+        assert_eq!(t.port, 22);
+        assert!(t.distro.is_none());
+        assert_eq!(t.workspace.as_deref(), Some("/tmp/spike-ws"));
+        assert_eq!(
+            t.engine_paths.get("codex").unwrap(),
+            "/usr/local/bin/codex"
+        );
+    }
+
+    #[test]
+    fn ssh_meta_rejects_bad_host_but_wsl_still_needs_distro() {
+        assert!(from_workspace_meta(&json!({"ssh": {"host": "-evil", "user": "root"}})).is_none());
+        assert!(from_workspace_meta(&json!({"wsl": {"host": "h", "user": "u"}})).is_none());
+    }
+
+    #[test]
+    fn remote_command_wraps_wsl_but_passes_linux_through() {
+        let wsl = remote_command_string(&tp(), &["bash", "/tmp/x.sh"]);
+        assert_eq!(wsl, "wsl.exe -d \"Ubuntu-22.04\" -- \"bash\" \"/tmp/x.sh\"");
+        let linux = remote_command_string(&linux_tp(), &["bash", "/tmp/x.sh"]);
+        assert_eq!(linux, "\"bash\" \"/tmp/x.sh\"");
+        let tee = remote_command_string(&linux_tp(), &["tee", "/tmp/x.sh"]);
+        assert_eq!(tee, "\"tee\" \"/tmp/x.sh\"");
+    }
+
+    #[test]
+    fn linux_script_resolves_engine_bin_and_cds() {
+        let script = build_script("codex", &["exec".to_string()], &[], &linux_tp());
+        assert!(script.contains("cd /tmp/spike-ws || exit 61"));
+        assert!(script.contains("exec '/usr/local/bin/codex' 'exec'"));
+    }
+
+    /// Live proof against the disposable LXC target. Not run by default:
+    /// cargo test -p <crate> ssh_linux_roundtrip -- --ignored --nocapture
+    /// with CCSPIKE_SSH="user@host" and key-based auth in place.
+    #[tokio::test]
+    #[ignore]
+    async fn ssh_linux_roundtrip() {
+        let target = std::env::var("CCSPIKE_SSH").expect("set CCSPIKE_SSH=user@host");
+        let (user, host) = target.split_once('@').expect("user@host");
+        let t = WslTransport {
+            host: host.into(),
+            port: 22,
+            user: user.into(),
+            distro: None,
+            control_path: None,
+            engine_paths: HashMap::new(),
+            workspace: None,
+        };
+        let out = run_script_output(&t, "echo PROBE_OK").await.expect("ssh run");
+        assert!(out.trim_end().ends_with("PROBE_OK"), "got: {out:?}");
     }
 }

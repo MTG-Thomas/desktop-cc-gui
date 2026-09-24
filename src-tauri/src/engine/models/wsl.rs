@@ -169,7 +169,7 @@ mod tests {
             host: "10.0.0.2".into(),
             port: 22,
             user: "dev".into(),
-            distro: "Ubuntu".into(),
+            distro: Some("Ubuntu".into()),
             control_path: None,
             engine_paths: Default::default(),
             workspace: workspace.map(str::to_string),
