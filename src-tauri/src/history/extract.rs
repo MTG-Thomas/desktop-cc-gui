@@ -17,6 +17,9 @@ pub fn parse_session_file(engine: &str, path: &Path) -> Result<ParsedSession, St
     if engine == "opencode" {
         return Ok(parse_opencode_session(path));
     }
+    if engine == "muse" {
+        return super::muse::parse_muse_session(path);
+    }
     let reader = open_line_reader(engine, path)?;
     Ok(collect_session(
         reader,
@@ -45,6 +48,9 @@ pub fn scan_summary_file(engine: &str, path: &Path) -> Result<ScanSummary, Strin
     }
     if engine == "opencode" {
         return Ok(scan_opencode_summary(path));
+    }
+    if engine == "muse" {
+        return Ok(super::muse::scan_muse_summary(path));
     }
     let reader = open_line_reader(engine, path)?;
     let mut acc = ScanAcc::default();

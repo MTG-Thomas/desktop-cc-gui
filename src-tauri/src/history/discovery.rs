@@ -359,6 +359,12 @@ fn read_small_json(path: &Path, max_bytes: u64) -> Option<serde_json::Value> {
 /// directory, title, time:{created,updated}}`). Attribution comes from the
 /// metadata's `directory` field — the projectId dir is a content hash, not
 /// a path encoding, so the tiny metadata file must be read (bounded above).
+/// Muse sessions come from the session index DB, not a file walk:
+/// workspace match + log path per row. See `super::muse`.
+pub(super) fn discover_muse(workspace: &Path) -> Vec<SessionFile> {
+    super::muse::discover_muse(workspace)
+}
+
 pub(super) fn discover_opencode(workspace: &Path) -> Vec<SessionFile> {
     let mut out = Vec::new();
     let mut seen_sessions = std::collections::HashSet::new();

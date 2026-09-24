@@ -1,5 +1,5 @@
 use super::discovery::{
-    codex_candidates, discover_agy, discover_claude, discover_grok, discover_kimi,
+    codex_candidates, discover_agy, discover_claude, discover_grok, discover_kimi, discover_muse,
     discover_opencode, discover_qoder, dsh_candidates, identify_head, is_codex_subagent_file,
     is_dsh_subagent_file, path_is_under, pi_family_candidates,
 };
@@ -106,6 +106,7 @@ fn gather_candidates(workspaces: &[String]) -> Vec<Candidate> {
                 crate::engine::qoder::QoderDistribution::Cn,
             ))
             .chain(discover_opencode(&workspace))
+            .chain(discover_muse(&workspace))
         {
             if seen_paths.insert(file.file_path.clone()) {
                 candidates.push(Candidate {

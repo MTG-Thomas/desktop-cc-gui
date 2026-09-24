@@ -2,6 +2,7 @@ mod agy;
 mod codex_titles;
 pub(crate) mod discovery;
 mod extract;
+mod muse;
 pub mod reader;
 pub mod scanner;
 pub mod search;

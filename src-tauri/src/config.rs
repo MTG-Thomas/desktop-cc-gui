@@ -8,8 +8,8 @@ pub const LOCAL_PROVIDER_ID: &str = "__local_settings_json__";
 /// config" semantics, different spelling.
 pub(crate) const LEGACY_LOCAL_CONFIG_TOML_ID: &str = "__local_config_toml__";
 pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
-pub const ENGINES: [&str; 11] = [
-    "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "opencode", "qoder", "qoder-cn",
+pub const ENGINES: [&str; 12] = [
+    "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "muse", "opencode", "qoder", "qoder-cn",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -65,6 +65,7 @@ engine_sections!(
     (omp, "omp"),
     (dsh, "dsh"),
     (agy, "agy"),
+    (muse, "muse"),
     (opencode, "opencode"),
     (qoder, "qoder"),
     (qoder_cn, "qoder-cn"),

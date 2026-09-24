@@ -18,6 +18,7 @@ pub(crate) mod job;
 pub mod kimi;
 mod kimi_acp;
 pub mod models;
+pub mod muse;
 pub mod opencode;
 pub mod opencode_server;
 mod opencode_session;
@@ -211,6 +212,7 @@ pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
         "omp" => Some(Box::new(pi_family::omp())),
         "dsh" => Some(Box::new(dsh::DshEngine)),
         "agy" => Some(Box::new(agy::AgyEngine)),
+        "muse" => Some(Box::new(muse::MuseEngine)),
         "opencode" => Some(Box::new(opencode::OpenCodeEngine)),
         "qoder" => Some(Box::new(qoder::QoderEngine::new(
             qoder::QoderDistribution::Global,
